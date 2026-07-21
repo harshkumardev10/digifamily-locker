@@ -1,0 +1,17 @@
+{
+  "name": "DigiFamily Locker",
+  "short_name": "DigiFamily",
+  "description": "Secure Family Document Locker Portal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c3e72",
+  "theme_color": "#0c3e72",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

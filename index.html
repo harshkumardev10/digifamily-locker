@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DigiFamily Locker - Secure Document Saver</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" href="/favicon.png">
+  <link rel="manifest" href="/manifest.json">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Premium Buffering/Loading Screen -->
+  <div id="app-loader" class="app-loader hidden">
+    <div class="loader-content">
+      <div class="loader-visual">
+        <div class="loader-ring"></div>
+        <div class="loader-shield">
+          <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+        </div>
+      </div>
+      <h3 id="loader-title">Securing Connection</h3>
+      <p id="loader-status">Initializing encrypted locker database...</p>
+    </div>
+  </div>
+
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <div id="logo-reload-btn" class="logo-area" title="Click to refresh page" style="cursor: pointer;">
+        <div class="logo-icon">
+          <img src="/favicon.png" alt="DigiFamily Logo" width="48" height="48" style="object-fit: contain;">
+        </div>
+        <div class="logo-text">
+          <h1>DigiFamily</h1>
+          <span>Locker Portal</span>
+        </div>
+      </div>
+      <div class="tricolor-badge">
+        <span class="saffron"></span>
+        <span class="white"></span>
+        <span class="green"></span>
+      </div>
+      <div id="header-family" class="header-user hidden">
+        <span id="header-family-name" class="family-name-badge"></span>
+        <button id="family-logout-btn" class="btn btn-outline btn-sm">Switch Family</button>
+      </div>
+      <div id="header-user" class="header-user hidden">
+        <img id="header-avatar" src="" alt="User Avatar" class="nav-avatar">
+        <span id="header-username">Member</span>
+        <button id="logout-btn" class="btn btn-outline btn-sm">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+
+    <!-- SECTION 0: LANDING PAGE (FAMILY LOGIN / SIGNUP) -->
+    <section id="landing-view" class="landing-section">
+      <div class="landing-bg">
+        <div class="landing-blob blob-1"></div>
+        <div class="landing-blob blob-2"></div>
+        <div class="landing-blob blob-3"></div>
+      </div>
+      <div class="landing-card">
+        <!-- Brand -->
+        <div class="landing-brand">
+          <div class="landing-shield">
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+          </div>
+          <h1 class="landing-title">DigiFamily Locker</h1>
+          <p class="landing-subtitle">Your family's secure digital document vault</p>
+        </div>
+
+        <!-- LOGIN PANEL -->
+        <div id="landing-login-panel">
+          <h2 class="auth-heading">Welcome Back</h2>
+          <p class="auth-subheading">Sign in to your family vault</p>
+          <form id="family-login-form" class="auth-form">
+            <div class="auth-field">
+              <label for="fl-username">Family Username</label>
+              <input type="text" id="fl-username" class="form-control" placeholder="e.g. ankit" autocomplete="username" value="ankit" required>
+            </div>
+            <div class="auth-field">
+              <label for="fl-password">Family Password</label>
+              <div class="password-wrap">
+                <input type="password" id="fl-password" class="form-control" placeholder="ankit" value="ankit" autocomplete="current-password" required>
+              </div>
+            </div>
+            <div id="fl-error" class="auth-error hidden">Incorrect username or password.</div>
+            <button type="submit" class="btn btn-primary btn-full">Open My Vault</button>
+          </form>
+          <div class="auth-divider"><span>or</span></div>
+          <button id="show-signup-btn" class="btn btn-outline btn-full">Create New Family Account</button>
+        </div>
+
+        <!-- SIGNUP PANEL -->
+        <div id="landing-signup-panel" class="hidden">
+          <h2 class="auth-heading">Create Family Account</h2>
+          <p class="auth-subheading">One account for your entire family</p>
+          <form id="family-signup-form" class="auth-form">
+            <div class="auth-field">
+              <label for="fs-family-name">Family Name</label>
+              <input type="text" id="fs-family-name" class="form-control" placeholder="e.g. Kumar Family" required>
+            </div>
+            <div class="auth-field">
+              <label for="fs-username">Choose Username</label>
+              <input type="text" id="fs-username" class="form-control" placeholder="e.g. kumar" autocomplete="username" required>
+            </div>
+            <div class="auth-field">
+              <label for="fs-password">Choose Password</label>
+              <input type="password" id="fs-password" class="form-control" placeholder="Min 6 characters" autocomplete="new-password" required>
+            </div>
+            <div class="auth-field">
+              <label for="fs-confirm">Confirm Password</label>
+              <input type="password" id="fs-confirm" class="form-control" placeholder="Repeat password" autocomplete="new-password" required>
+            </div>
+            <div id="fs-error" class="auth-error hidden">Please check your details.</div>
+            <button type="submit" class="btn btn-primary btn-full">Create Family Vault</button>
+          </form>
+          <div class="auth-divider"><span>or</span></div>
+          <button id="show-login-btn" class="btn btn-outline btn-full">Sign In Instead</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 1: HOME PAGE (MEMBER SELECTION) -->
+    <section id="home-view" class="view-section hidden">
+      <div class="section-hero">
+        <h2>Your Family's Secure Document Vault</h2>
+        <p>Access and manage government IDs, educational certificates, and digital documents in one secure family locker.</p>
+      </div>
+      
+      <div class="members-header">
+        <h3>Family Members</h3>
+        <button id="open-register-btn" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Add Member
+        </button>
+      </div>
+      
+      <!-- Grid of family members -->
+      <div id="members-grid" class="members-grid">
+        <!-- Rendered dynamically by JS -->
+      </div>
+    </section>
+
+    <!-- SECTION 2: MEMBER DASHBOARD (LOGGED IN) -->
+    <section id="dashboard-view" class="view-section hidden">
+      <div class="dashboard-header-card">
+        <div class="member-profile-info">
+          <img id="dash-avatar" src="" alt="Profile Image" class="dash-profile-img">
+          <div class="member-text">
+            <h2 id="dash-welcome">Welcome back, Name</h2>
+            <p>Age: <span id="dash-age">0</span> | Username: @<span id="dash-username">username</span></p>
+          </div>
+        </div>
+        <div class="dashboard-actions">
+          <button id="open-add-doc-btn" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add Document
+          </button>
+          <button id="open-settings-btn" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Settings
+          </button>
+          <button id="dash-back-btn" class="btn btn-outline">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Exit Vault
+          </button>
+        </div>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="search-filter-bar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="doc-search" placeholder="Search documents (Aadhaar, PAN, Name...)">
+        </div>
+        <div class="filter-tabs">
+          <button class="filter-tab active" data-category="all">All</button>
+          <button class="filter-tab" data-category="identity">Identity</button>
+          <button class="filter-tab" data-category="education">Education</button>
+          <button class="filter-tab" data-category="vehicle">Vehicle</button>
+          <button class="filter-tab" data-category="other">Others</button>
+        </div>
+      </div>
+
+      <!-- Grid of saved documents -->
+      <div id="docs-grid" class="docs-grid">
+        <!-- Rendered dynamically by JS -->
+      </div>
+      
+      <!-- Empty state when no docs matching search/filter or no docs at all -->
+      <div id="docs-empty" class="empty-state hidden">
+        <div class="empty-icon">📂</div>
+        <h4>No Documents Found</h4>
+        <p>Tap "Add Document" to upload a new official card or certificate.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 1: LOGIN MODAL -->
+  <div id="login-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Verify Family Password</h3>
+        <button class="close-modal-btn" data-modal="login-modal">&times;</button>
+      </div>
+      <form id="login-form" class="modal-body">
+        <input type="hidden" id="login-member-id">
+        <div class="selected-member-preview">
+          <img id="login-member-avatar" src="" alt="Avatar" class="avatar-lg">
+          <div>
+            <h4 id="login-member-name">Member Name</h4>
+            <span id="login-member-username-display">@username</span>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Family Password</label>
+          <input type="password" id="login-password" class="form-control" autocomplete="current-password" placeholder="Enter family password" required>
+        </div>
+        <div id="login-error-msg" class="error-text hidden">Wrong family password. Please try again.</div>
+        
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline close-modal-btn" data-modal="login-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Open Locker</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 2: REGISTER FAMILY MEMBER -->
+  <div id="register-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Add Family Member</h3>
+        <button class="close-modal-btn" data-modal="register-modal">&times;</button>
+      </div>
+      <form id="register-form" class="modal-body">
+        <div class="form-group">
+          <label for="reg-name">Full Name</label>
+          <input type="text" id="reg-name" class="form-control" placeholder="e.g. Rajesh Kumar" required>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="reg-age">Age</label>
+            <input type="number" id="reg-age" class="form-control" placeholder="e.g. 45" min="1" max="120" required>
+          </div>
+          <div class="form-group col">
+            <label for="reg-username">Username</label>
+            <input type="text" id="reg-username" class="form-control" placeholder="e.g. rajesh" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="reg-password">Password</label>
+          <input type="password" id="reg-password" class="form-control" autocomplete="new-password" placeholder="Set security password" required>
+        </div>
+
+        <div class="form-group">
+          <label>Profile Photo &amp; Avatar</label>
+          <div class="profile-edit-avatar-section">
+            <!-- Registration avatar preview — entire circle is clickable -->
+            <label class="avatar-edit-container" for="reg-avatar-file" title="Click to change photo">
+              <img id="reg-avatar-preview" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgZmlsbD0nI0UzRjJGRCcvPjxjaXJjbGUgY3g9JzUwJyBjeT0nNDAnIHI9JzIwJyBmaWxsPScjMUU4OEU1Jy8+PHBhdGggZD0nTTIwIDg1IEMyMCA2NSwgODAgNjUsIDgwIDg1JyBmaWxsPScjMUU4OEU1Jy8+PC9zdmc+" alt="Registration Preview">
+              <div class="avatar-cam-badge">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+              </div>
+              <input type="file" id="reg-avatar-file" accept="image/*" style="display:none;">
+            </label>
+            <span class="avatar-upload-hint">Tap photo to upload or choose cartoon below</span>
+
+            <!-- Cartoon avatar picker -->
+            <div class="toon-picker-section">
+              <div class="toon-picker-label">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                  <line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line>
+                </svg>
+                Or pick a cartoon avatar
+              </div>
+              <div id="reg-toon-avatar-grid" class="toon-avatar-grid">
+                <!-- Populated dynamically by JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="reg-error-msg" class="error-text hidden">Username already exists!</div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline close-modal-btn" data-modal="register-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Member</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: ADD/EDIT DOCUMENT -->
+  <div id="doc-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="doc-modal-title">Add New Document</h3>
+        <button class="close-modal-btn" data-modal="doc-modal">&times;</button>
+      </div>
+      <form id="doc-form" class="modal-body">
+        <input type="hidden" id="edit-doc-id">
+        
+        <div class="form-group">
+          <label for="doc-type">Document Type</label>
+          <select id="doc-type" class="form-control" required>
+            <option value="" disabled selected>Select category...</option>
+            <optgroup label="Identity Documents">
+              <option value="Aadhaar Card">Aadhaar Card</option>
+              <option value="PAN Card">PAN Card</option>
+              <option value="Passport">Passport</option>
+              <option value="Voter ID">Voter ID Card</option>
+            </optgroup>
+            <optgroup label="Vehicle & Travel">
+              <option value="Driving License">Driving License</option>
+              <option value="Registration Certificate (RC)">Registration Certificate (RC)</option>
+            </optgroup>
+            <optgroup label="Education & Certificates">
+              <option value="Class X Marksheet">Class X Marksheet</option>
+              <option value="Class XII Marksheet">Class XII Marksheet</option>
+              <option value="Degree Certificate">Degree Certificate</option>
+            </optgroup>
+            <optgroup label="Other">
+              <option value="Custom Document">Other Document</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="doc-title">Document Title / Custom Type Name</label>
+          <input type="text" id="doc-title" class="form-control" placeholder="e.g. Aadhaar Card, PAN Card, Birth Certificate" required>
+        </div>
+
+        <div class="form-group">
+          <label for="doc-number">Document/Registration Number</label>
+          <input type="text" id="doc-number" class="form-control" placeholder="e.g. XXXX-XXXX-XXXX or ABCDE1234F" required>
+        </div>
+
+        <div class="form-group">
+          <label for="doc-name">Name as on Document</label>
+          <input type="text" id="doc-name" class="form-control" placeholder="e.g. Rajesh Kumar" required>
+        </div>
+
+        <div class="form-group">
+          <label>Document Photo/Scan Image</label>
+          <div class="upload-dropzone" id="upload-zone">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="upload-icon">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx='8.5' cy='8.5' r='1.5'></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span class="upload-text">Drag & drop your document image here or <span class="browse-link">browse</span></span>
+            <input type="file" id="doc-image-input" accept="image/*" class="hidden-input">
+          </div>
+          <div id="image-preview-container" class="image-preview-container hidden">
+            <img id="image-preview" src="" alt="Doc Preview">
+            <button type="button" id="remove-img-btn" class="remove-img-btn">&times;</button>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline close-modal-btn" data-modal="doc-modal">Cancel</button>
+          <button type="submit" id="save-doc-btn" class="btn btn-primary">Save Document</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: SETTINGS / PROFILE EDITOR / CHANGE PASSWORD -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Locker & Profile Settings</h3>
+        <button class="close-modal-btn" data-modal="settings-modal">&times;</button>
+      </div>
+      
+      <!-- Settings Tab Nav -->
+      <div class="settings-tabs" style="display: flex; border-bottom: 1px solid var(--border-color); background: #f7fafc;">
+        <button type="button" id="tab-profile-btn" class="settings-tab-btn active" style="flex: 1; padding: 12px; font-family: var(--font-sans); font-weight: 600; background: none; border: none; cursor: pointer; border-bottom: 2px solid var(--primary-light); color: var(--primary-light); transition: var(--transition);">Edit Profile</button>
+        <button type="button" id="tab-password-btn" class="settings-tab-btn" style="flex: 1; padding: 12px; font-family: var(--font-sans); font-weight: 600; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); transition: var(--transition);">Change Password</button>
+        <button type="button" id="tab-backup-btn" class="settings-tab-btn" style="flex: 1; padding: 12px; font-family: var(--font-sans); font-weight: 600; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); transition: var(--transition);">Backup & Code Sync</button>
+        <button type="button" id="tab-firebase-btn" class="settings-tab-btn" style="flex: 1; padding: 12px; font-family: var(--font-sans); font-weight: 600; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); transition: var(--transition);">Firebase Connect</button>
+      </div>
+
+      <!-- Form for Profile Editor -->
+      <form id="profile-settings-form" class="modal-body settings-panel">
+        <div class="profile-edit-avatar-section">
+          <!-- Current avatar preview — entire circle is clickable -->
+          <label class="avatar-edit-container" for="profile-edit-avatar-file" title="Click to change photo">
+            <img id="profile-edit-avatar-preview" src="" alt="Profile Preview">
+            <div class="avatar-cam-badge">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </div>
+            <input type="file" id="profile-edit-avatar-file" accept="image/*" style="display:none;">
+          </label>
+          <span class="avatar-upload-hint">Tap photo to upload or choose cartoon below</span>
+
+          <!-- Cartoon avatar picker -->
+          <div class="toon-picker-section">
+            <div class="toon-picker-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                <line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line>
+              </svg>
+              Or pick a cartoon avatar
+            </div>
+            <div id="toon-avatar-grid" class="toon-avatar-grid">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="profile-edit-name">Full Name</label>
+          <input type="text" id="profile-edit-name" class="form-control" placeholder="Enter Full Name" required>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="profile-edit-age">Age</label>
+            <input type="number" id="profile-edit-age" class="form-control" placeholder="Enter Age" min="1" max="120" required>
+          </div>
+          <div class="form-group col">
+            <label for="profile-edit-username">Username</label>
+            <input type="text" id="profile-edit-username" class="form-control" placeholder="Enter Username" required>
+          </div>
+        </div>
+        
+        <div id="profile-settings-error-msg" class="error-text hidden"></div>
+        <div id="profile-settings-success-msg" class="success-text hidden">Profile updated successfully!</div>
+
+        <div class="modal-footer" style="padding-left: 0; padding-right: 0; border-top: none; background: transparent;">
+          <button type="button" class="btn btn-outline close-modal-btn" data-modal="settings-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Profile</button>
+        </div>
+      </form>
+
+      <!-- Form for Password Editor -->
+      <form id="settings-form" class="modal-body settings-panel hidden">
+        <h4 class="settings-title">Change Password</h4>
+        <p class="settings-desc">Update the password used to access your family document card.</p>
+        
+        <div class="form-group">
+          <label for="old-password">Old Password</label>
+          <input type="password" id="old-password" class="form-control" autocomplete="current-password" placeholder="Enter current password" required>
+        </div>
+
+        <div class="form-group">
+          <label for="new-password">New Password</label>
+          <input type="password" id="new-password" class="form-control" autocomplete="new-password" placeholder="Enter new password" required>
+        </div>
+
+        <div class="form-group">
+          <label for="confirm-password">Confirm New Password</label>
+          <input type="password" id="confirm-password" class="form-control" autocomplete="new-password" placeholder="Confirm new password" required>
+        </div>
+        
+        <div id="settings-error-msg" class="error-text hidden"></div>
+        <div id="settings-success-msg" class="success-text hidden">Password updated successfully!</div>
+
+        <div class="modal-footer" style="padding-left: 0; padding-right: 0; border-top: none; background: transparent;">
+          <button type="button" class="btn btn-outline close-modal-btn" data-modal="settings-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Password</button>
+        </div>
+      </form>
+
+      <!-- Panel for Backup & Code Sync -->
+      <div id="backup-settings-panel" class="modal-body settings-panel hidden">
+        <div style="display: flex; flex-direction: column; gap: 20px; font-family: var(--font-sans);">
+          
+          <div style="background: rgba(30, 136, 229, 0.05); padding: 16px; border-radius: 12px; border: 1px solid rgba(30, 136, 229, 0.15);">
+            <h4 style="margin: 0 0 8px 0; color: var(--primary-color); display: flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              Save data to app.js Code
+            </h4>
+            <p style="margin: 0 0 16px 0; font-size: 0.85rem; line-height: 1.4; color: var(--text-muted);">
+              To make your database updates permanent on the internet, download the updated code below and replace your local <strong>app.js</strong> file before redeploying.
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button type="button" id="download-app-js-btn" class="btn btn-primary btn-sm" style="display: flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download Updated app.js
+              </button>
+              <button type="button" id="copy-seed-code-btn" class="btn btn-outline btn-sm" style="display: flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy Seed Code Snippet
+              </button>
+            </div>
+            <div id="copy-success-msg" style="color: var(--success-color); font-size: 0.8rem; margin-top: 8px; font-weight: 500;" class="hidden">Copied to clipboard successfully!</div>
+          </div>
+
+          <div style="background: #fafafa; padding: 16px; border-radius: 12px; border: 1px solid var(--border-color);">
+            <h4 style="margin: 0 0 8px 0; color: var(--text-color); display: flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              Manual Backup & Restore (JSON)
+            </h4>
+            <p style="margin: 0 0 16px 0; font-size: 0.85rem; line-height: 1.4; color: var(--text-muted);">
+              Export or import your complete database to easily transfer documents and members between browsers or different devices.
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <button type="button" id="export-db-json-btn" class="btn btn-outline btn-sm" style="display: flex; align-items: center; gap: 6px;">
+                Export Backup (JSON)
+              </button>
+              <button type="button" id="trigger-import-db-btn" class="btn btn-outline btn-sm" style="display: flex; align-items: center; gap: 6px;">
+                Import Backup (JSON)
+              </button>
+              <input type="file" id="import-db-file" accept=".json" style="display: none;">
+            </div>
+            <div id="import-status-msg" style="font-size: 0.8rem; margin-top: 8px; font-weight: 500;"></div>
+          </div>
+
+          <div style="background: rgba(76, 175, 80, 0.05); padding: 16px; border-radius: 12px; border: 1px solid rgba(76, 175, 80, 0.15);">
+            <h4 style="margin: 0 0 8px 0; color: var(--success-color); display: flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15c.1-1 .1-1.9 0-2.9-.2-1.5-.8-2.9-1.7-4.1-.2-.2-.5-.3-.7-.1-.2.2-.2.5 0 .7.8 1.1 1.3 2.3 1.5 3.6.1.8.1 1.7 0 2.5-.2 1.3-.8 2.5-1.7 3.6-.2.2-.1.5.1.7.1.1.2.1.3.1.1 0 .3 0 .4-.1 1.1-1.2 1.7-2.6 1.8-4.1z"></path><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10c0-1.7-.4-3.3-1.2-4.8-.1-.2-.4-.3-.7-.2-.2.1-.3.4-.2.7.7 1.3 1.1 2.8 1.1 4.3 0 4.9-4 9-9 9s-9-4.1-9-9 4.1-9 9-9c1.5 0 3 .4 4.3 1.1.2.1.5 0 .7-.2.1-.2 0-.5-.2-.7C15.3 2.4 13.7 2 12 2z"></path><path d="M12 6c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6c0-1-.2-2-.7-2.9-.1-.2-.4-.3-.7-.2-.2.1-.3.4-.2.7.4.7.6 1.5.6 2.4 0 2.8-2.2 5-5 5s-5-2.2-5-5 2.2-5 5-5c.9 0 1.7.2 2.4.6.2.1.5 0 .7-.2.1-.2 0-.5-.2-.7C14 6.2 13 6 12 6z"></path><circle cx="12" cy="12" r="2"></circle></svg>
+              Cloud Sync (Multi-Device)
+            </h4>
+            <p style="margin: 0 0 16px 0; font-size: 0.85rem; line-height: 1.4; color: var(--text-muted);">
+              Sync your vault securely across all devices using end-to-end encryption. Your data is encrypted on your device using your password before uploading.
+            </p>
+            
+            <!-- Setup/Disabled state -->
+            <div id="sync-setup-section">
+              <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;">
+                <div style="display: flex; gap: 10px;">
+                  <button type="button" id="start-new-sync-btn" class="btn btn-primary btn-sm">Enable Cloud Sync</button>
+                  <button type="button" id="join-sync-btn" class="btn btn-outline btn-sm">Connect Existing Sync</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active sync state -->
+            <div id="sync-active-section" class="hidden">
+              <div style="background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 12px; font-size: 0.85rem;">
+                <div style="margin-bottom: 6px;"><strong>Sync ID:</strong> <span id="sync-display-id" style="font-family: monospace; font-weight: bold; background: #eee; padding: 2px 6px; border-radius: 4px;"></span></div>
+                <div style="margin-bottom: 6px;"><strong>Status:</strong> <span style="color: var(--success-color); font-weight: bold;">● Active & Synced</span></div>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button type="button" id="copy-sync-creds-btn" class="btn btn-outline btn-sm">Copy Sync Credentials</button>
+                <button type="button" id="disable-sync-btn" class="btn btn-secondary btn-sm">Disable Cloud Sync</button>
+              </div>
+            </div>
+
+            <!-- Panel inside Sync Setup -->
+            <div id="sync-setup-modal-inner" class="hidden" style="margin-top: 15px; border-top: 1px dashed rgba(76,175,80,0.3); padding-top: 15px;">
+              <h5 id="sync-setup-title" style="margin: 0 0 10px 0; font-weight: 600; color: var(--text-color);">Setup Cloud Sync</h5>
+              <div class="form-group" id="sync-id-input-group" style="margin-bottom: 12px;">
+                <label for="sync-setup-id" style="font-size: 0.8rem; font-weight: 600;">Sync ID</label>
+                <input type="text" id="sync-setup-id" class="form-control" placeholder="Paste your Sync ID here" style="padding: 8px; font-size: 0.85rem;">
+              </div>
+              <div class="form-group" style="margin-bottom: 15px;">
+                <label for="sync-setup-passphrase" style="font-size: 0.8rem; font-weight: 600;">Sync Passphrase (Keep it safe!)</label>
+                <input type="password" id="sync-setup-passphrase" class="form-control" placeholder="Choose a secure passphrase to encrypt data" style="padding: 8px; font-size: 0.85rem;">
+              </div>
+              <div style="display:flex; gap:10px;">
+                <button type="button" id="confirm-sync-btn" class="btn btn-primary btn-sm">Submit Setup</button>
+                <button type="button" id="cancel-sync-setup-btn" class="btn btn-outline btn-sm">Cancel</button>
+              </div>
+            </div>
+            <div id="sync-setup-error" style="color: #f44336; font-size: 0.8rem; margin-top: 8px; font-weight: 500;" class="hidden"></div>
+          </div>
+
+        </div>
+
+      <!-- Panel for Firebase Connect -->
+      <form id="firebase-settings-panel" class="modal-body settings-panel hidden" style="font-family: var(--font-sans);">
+        <h4 style="margin: 0 0 8px 0; color: var(--primary-dark); font-weight: 700;">Connect Firebase Database</h4>
+        <p style="margin: 0 0 16px 0; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
+          Sync all documents and member profiles in real-time to your free Firebase cloud database. Document scans are safely stored in Firebase Storage instead of local memory.
+        </p>
+
+        <div class="form-group">
+          <label for="fb-apiKey">API Key (apiKey)</label>
+          <input type="text" id="fb-apiKey" class="form-control" placeholder="AIzaSy..." required>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="fb-projectId">Project ID (projectId)</label>
+            <input type="text" id="fb-projectId" class="form-control" placeholder="my-family-locker-123" required>
+          </div>
+          <div class="form-group col">
+            <label for="fb-storageBucket">Storage Bucket (storageBucket)</label>
+            <input type="text" id="fb-storageBucket" class="form-control" placeholder="my-family-locker-123.appspot.com" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="fb-authDomain">Auth Domain (authDomain)</label>
+            <input type="text" id="fb-authDomain" class="form-control" placeholder="my-family-locker-123.firebaseapp.com" required>
+          </div>
+          <div class="form-group col">
+            <label for="fb-appId">App ID (appId)</label>
+            <input type="text" id="fb-appId" class="form-control" placeholder="1:123456:web:abcd123" required>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 4px;">
+          <label for="fb-imgbbKey" style="display:flex; align-items:center; gap:6px;">
+            ImgBB API Key 
+            <span style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">(for document photo hosting)</span>
+          </label>
+          <input type="text" id="fb-imgbbKey" class="form-control" placeholder="Get free key at imgbb.com/api" style="font-family: monospace; font-size: 0.82rem;">
+          <p style="margin: 4px 0 0 0; font-size: 0.75rem; color: var(--text-muted);">
+            Get a free API key at <a href="https://api.imgbb.com/" target="_blank" rel="noopener" style="color: var(--primary-light);">api.imgbb.com</a> — 
+            required to upload document scan images to the cloud.
+          </p>
+        </div>
+
+        <div id="firebase-settings-status" class="hidden" style="margin-top: 8px; font-size: 0.85rem; font-weight: 600;"></div>
+
+        <div class="modal-footer" style="padding-left: 0; padding-right: 0; border-top: none; background: transparent; margin-top: 20px;">
+          <button type="submit" id="save-firebase-btn" class="btn btn-primary">Connect &amp; Save</button>
+          <button type="button" id="disconnect-firebase-btn" class="btn btn-danger hidden">Disconnect Cloud</button>
+        </div>
+      </form>
+
+        <div class="modal-footer" style="padding-left: 0; padding-right: 0; border-top: 1px solid var(--border-color); margin-top: 20px; background: transparent;">
+          <button type="button" class="btn btn-secondary close-modal-btn" data-modal="settings-modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: DOCUMENT DETAILS VIEW -->
+  <div id="view-doc-modal" class="modal-overlay hidden">
+    <div class="modal-card view-card">
+      <div class="modal-header">
+        <h3 id="view-doc-title-header">Document Card</h3>
+        <button class="close-modal-btn" data-modal="view-doc-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Coming Soon placeholder (shown when no image uploaded) -->
+        <div id="doc-coming-soon" class="doc-coming-soon hidden">
+          <div class="coming-soon-inner">
+            <div class="coming-soon-icon">⏳</div>
+            <h3>Coming Soon</h3>
+            <p>No document image has been uploaded yet.</p>
+            <p class="coming-soon-hint">Click <strong>"Edit Details"</strong> below to attach a photo or scan of your document.</p>
+          </div>
+        </div>
+
+        <!-- Card + scan (shown when image is uploaded) -->
+        <div id="doc-detail-block">
+          <!-- Visual card with user-entered details -->
+          <div id="digi-card-display" class="digi-card"></div>
+
+          <div id="doc-attachment-section" class="doc-attachment-section">
+            <h4>Uploaded Document Image Scan</h4>
+            <div id="doc-attachment-display" class="doc-attachment-display"></div>
+          </div>
+        </div>
+        
+        <div class="view-doc-actions">
+          <button id="delete-doc-btn" class="btn btn-danger btn-sm">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+            Delete
+          </button>
+          <button id="edit-doc-btn" class="btn btn-secondary btn-sm">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            Edit Details
+          </button>
+          <button class="btn btn-outline btn-sm close-modal-btn" data-modal="view-doc-modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA Install Banner -->
+  <div id="pwa-install-banner" class="pwa-install-banner hidden">
+    <div class="pwa-content">
+      <span class="pwa-icon">📲</span>
+      <div class="pwa-text">
+        <h4>Install DigiFamily Locker</h4>
+        <p>Add to your home screen for quick, offline-ready secure access.</p>
+      </div>
+      <div class="pwa-actions">
+        <button id="pwa-btn-install" class="btn btn-primary btn-sm">Install App</button>
+        <button id="pwa-btn-close" class="pwa-close-btn">&times;</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <div class="footer-content">
+      <p>&copy; 2026 DigiFamily Locker. Built secure for Indian Households.</p>
+      <div class="footer-badges">
+        <span>🔒 End-to-End Encrypted (Local)</span>
+        <span>🇮🇳 DigiLocker Inspired</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL 6: PHOTO EDITOR (Crop, Rotate, Zoom) -->
+  <div id="photo-editor-modal" class="modal-overlay hidden">
+    <div class="modal-card photo-editor-card">
+      <div class="modal-header">
+        <h3>Adjust Profile Photo</h3>
+        <button class="close-modal-btn" data-modal="photo-editor-modal">&times;</button>
+      </div>
+      <div class="photo-editor-body">
+        <div class="photo-canvas-wrapper" id="photo-canvas-wrapper">
+          <canvas id="photo-editor-canvas"></canvas>
+          <div class="crop-overlay" id="crop-overlay">
+            <div class="crop-box" id="crop-box">
+              <div class="crop-rule-h"></div>
+              <div class="crop-rule-v"></div>
+              <div class="crop-handle crop-handle-tl" data-handle="tl"></div>
+              <div class="crop-handle crop-handle-tr" data-handle="tr"></div>
+              <div class="crop-handle crop-handle-bl" data-handle="bl"></div>
+              <div class="crop-handle crop-handle-br" data-handle="br"></div>
+            </div>
+          </div>
+        </div>
+        <div class="photo-editor-controls">
+          <div class="control-group">
+            <button type="button" id="rotate-left-btn" class="editor-btn">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-4.6"></path></svg>
+              Rotate Left
+            </button>
+            <button type="button" id="rotate-right-btn" class="editor-btn">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-.49-4.6"></path></svg>
+              Rotate Right
+            </button>
+          </div>
+          <div class="zoom-group">
+            <label for="zoom-slider">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+              Zoom
+            </label>
+            <input type="range" id="zoom-slider" min="50" max="250" value="100" step="5">
+            <span id="zoom-label">100%</span>
+          </div>
+          <p class="crop-tip">Drag the box to move &nbsp;|&nbsp; Drag corners to resize crop area</p>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" id="photo-editor-reset" class="btn btn-secondary btn-sm">Reset</button>
+        <div style="display:flex; gap:10px;">
+          <button type="button" class="btn btn-outline close-modal-btn" data-modal="photo-editor-modal">Cancel</button>
+          <button type="button" id="photo-editor-apply" class="btn btn-primary">Apply Photo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK Compat -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+
+  <!-- Logic JS file -->
+  <script src="app.js"></script>
+</body>
+</html>
