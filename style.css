@@ -2424,3 +2424,110 @@ footer.app-footer {
 .pwa-close-btn:hover {
   color: var(--text-main);
 }
+
+/* Header PWA Install Button */
+.header-pwa-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.header-install-btn {
+  background: linear-gradient(135deg, #1e62a6 0%, #0c3e72 100%);
+  color: #ffffff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(30, 98, 166, 0.3);
+  transition: all 0.25s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.header-install-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(30, 98, 166, 0.4);
+}
+
+.header-install-btn.installed-badge {
+  background: #e8f5e9 !important;
+  color: #2e7d32 !important;
+  box-shadow: none !important;
+  cursor: default;
+  opacity: 0.9;
+}
+
+/* PWA Guide Modal */
+.pwa-guide-modal-card {
+  max-width: 480px;
+  width: 92%;
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.pwa-modal-badge {
+  font-size: 2rem;
+  background: #e3f2fd;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pwa-platform-tag {
+  display: inline-block;
+  background: #e3f2fd;
+  color: var(--primary-color);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--primary-light);
+}
+
+.pwa-steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pwa-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.pwa-step-number {
+  background: var(--primary-light);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.pwa-step-text {
+  font-size: 0.88rem;
+  color: var(--text-main);
+  line-height: 1.45;
+}
+
+.pwa-step-text strong {
+  color: var(--primary-dark);
+}
+

@@ -292,25 +292,37 @@ function processFamilySignup(event) {
     return;
   }
 
+  // Create primary family head member automatically so vault is ready immediately
+  const primaryMember = {
+    id: "m-" + Date.now(),
+    name: familyName,
+    age: 35,
+    username: username,
+    password: password,
+    avatar: "avatar1"
+  };
+
   const newFamily = {
     id: "f-" + Date.now(),
     familyName,
     username,
     password,
     createdAt: new Date().toISOString(),
-    members: [],
+    members: [primaryMember],
     documents: []
   };
 
   families.push(newFamily);
   saveFamilies();
 
-  // Auto-login after signup
+  // Auto-login after signup and open vault dashboard directly
   currentFamily = newFamily;
   initDatabase();
   localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+  
   showLoader("Creating Vault", "Setting up your family locker...", 1200, () => {
-    showFamilyHome();
+    currentMember = primaryMember;
+    enterDashboard();
   });
 }
 
@@ -337,7 +349,7 @@ function processFamilyLogin(event) {
   initDatabase();
   localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
 
-  showLoader("Opening Vault", "Connecting to cloud vault...", 1500, async () => {
+  showLoader("Opening Vault", "Connecting to vault...", 1200, async () => {
     // Pull latest data from Firestore if connected
     if (_firestore) {
       try {
@@ -349,7 +361,14 @@ function processFamilyLogin(event) {
         console.warn("[Firestore] Could not pull on login:", err.message);
       }
     }
-    showFamilyHome();
+    
+    // Auto-enter dashboard if 1 member exists, else show member select screen
+    if (db.members && db.members.length === 1) {
+      currentMember = db.members[0];
+      enterDashboard();
+    } else {
+      showFamilyHome();
+    }
   });
 }
 
@@ -371,6 +390,27 @@ function processFamilyLogout() {
 function renderMembers() {
   const grid = document.getElementById("members-grid");
   grid.innerHTML = "";
+
+  if (!db.members || db.members.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-members-card" style="grid-column: 1 / -1; text-align: center; background: var(--bg-card); padding: 32px 20px; border-radius: var(--border-radius-md); border: 2px dashed var(--border-color);">
+        <div style="font-size: 2.5rem; margin-bottom: 8px;">👨‍👩‍👧‍👦</div>
+        <h3 style="margin: 0 0 6px 0; color: var(--primary-dark);">No Family Members Yet</h3>
+        <p style="margin: 0 0 16px 0; color: var(--text-muted); font-size: 0.88rem;">Add your first family member profile to start saving documents.</p>
+        <button id="empty-add-member-btn" class="btn btn-primary btn-sm">➕ Add Member</button>
+      </div>
+    `;
+    const btn = document.getElementById("empty-add-member-btn");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        document.getElementById("register-form").reset();
+        document.getElementById("reg-error-msg").classList.add("hidden");
+        uploadedCustomAvatarBase64 = null;
+        showModal("register-modal");
+      });
+    }
+    return;
+  }
 
   db.members.forEach(member => {
     // Count user documents
@@ -1604,18 +1644,28 @@ document.addEventListener("DOMContentLoaded", () => {
   // 1. Load Families
   loadFamilies();
 
-  // Reset all families to only one single account: Rajoriya family with password ankit
-  const rajoriyaFamily = {
-    id: "f-default",
-    familyName: "Rajoriya family",
-    username: "ankit",
-    password: "ankit",
-    createdAt: new Date().toISOString(),
-    members: [],
-    documents: []
-  };
-  families = [rajoriyaFamily];
-  saveFamilies();
+  // Initialize default demo family (ankit / ankit) IF no families exist yet in storage
+  if (!families || families.length === 0) {
+    const defaultFamily = {
+      id: "f-default",
+      familyName: "Rajoriya family",
+      username: "ankit",
+      password: "ankit",
+      createdAt: new Date().toISOString(),
+      members: JSON.parse(JSON.stringify(SEED_MEMBERS)),
+      documents: JSON.parse(JSON.stringify(SEED_DOCUMENTS))
+    };
+    families = [defaultFamily];
+    saveFamilies();
+  } else {
+    // If ankit default family exists but members are empty, seed with sample profiles
+    const defaultFam = families.find(f => f.username.toLowerCase() === "ankit");
+    if (defaultFam && (!defaultFam.members || defaultFam.members.length === 0)) {
+      defaultFam.members = JSON.parse(JSON.stringify(SEED_MEMBERS));
+      defaultFam.documents = JSON.parse(JSON.stringify(SEED_DOCUMENTS));
+      saveFamilies();
+    }
+  }
 
   // 2. Restore Family & Member Session if active
   const savedFamilyId = localStorage.getItem(CURRENT_FAMILY_KEY);
@@ -1913,43 +1963,189 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 11. PWA Service Worker & Install Prompt
+  // 11. PWA Service Worker & Enhanced Install Prompt System
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(err => {
+      navigator.serviceWorker.register('./sw.js').catch(err => {
         console.warn('Service worker registration failed:', err);
       });
     });
   }
 
-  let deferredPrompt;
+  let deferredPrompt = null;
   const pwaBanner = document.getElementById('pwa-install-banner');
   const pwaBtnInstall = document.getElementById('pwa-btn-install');
   const pwaBtnClose = document.getElementById('pwa-btn-close');
+  const headerInstallBtn = document.getElementById('header-install-btn');
+  const pwaModalDirectBtn = document.getElementById('pwa-modal-direct-btn');
 
+  // Check if running as installed standalone PWA
+  function isPWAInstalled() {
+    return window.matchMedia('(display-mode: standalone)').matches ||
+           window.navigator.standalone === true ||
+           document.referrer.includes('android-app://');
+  }
+
+  // Update UI based on PWA status
+  function initPWAUI() {
+    if (isPWAInstalled()) {
+      if (pwaBanner) pwaBanner.classList.add('hidden');
+      if (headerInstallBtn) {
+        headerInstallBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>App Installed</span>`;
+        headerInstallBtn.classList.add('installed-badge');
+        headerInstallBtn.disabled = true;
+      }
+      return;
+    }
+
+    // On page enter: Header install button is ALWAYS available
+    if (headerInstallBtn) {
+      headerInstallBtn.classList.remove('hidden');
+    }
+
+    // Show floating banner on enter (after 800ms) if not dismissed in session
+    if (pwaBanner && !sessionStorage.getItem('pwa_banner_dismissed')) {
+      setTimeout(() => {
+        if (!isPWAInstalled()) {
+          pwaBanner.classList.remove('hidden');
+        }
+      }, 800);
+    }
+  }
+
+  // Listen for native beforeinstallprompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    if (pwaBanner) pwaBanner.classList.remove('hidden');
+    console.log('DigiFamily Locker: beforeinstallprompt ready');
+    initPWAUI();
   });
 
-  if (pwaBtnInstall) {
-    pwaBtnInstall.addEventListener('click', async () => {
+  // Handle app installed event
+  window.addEventListener('appinstalled', () => {
+    console.log('DigiFamily Locker: App installed successfully');
+    deferredPrompt = null;
+    initPWAUI();
+  });
+
+  // Populate & open guide modal
+  function showPWAGuideModal() {
+    const guideContent = document.getElementById('pwa-guide-content');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    if (pwaModalDirectBtn) {
       if (deferredPrompt) {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to PWA prompt: ${outcome}`);
-        deferredPrompt = null;
+        pwaModalDirectBtn.classList.remove('hidden');
+      } else {
+        pwaModalDirectBtn.classList.add('hidden');
       }
-      if (pwaBanner) pwaBanner.classList.add('hidden');
+    }
+
+    if (guideContent) {
+      if (isIOS) {
+        guideContent.innerHTML = `
+          <div class="pwa-platform-tag">📱 iOS (Safari) Instructions</div>
+          <div class="pwa-steps-container">
+            <div class="pwa-step-item">
+              <div class="pwa-step-number">1</div>
+              <div class="pwa-step-text">
+                Tap the <strong>Share button</strong>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin: 0 4px;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                in the Safari bottom toolbar.
+              </div>
+            </div>
+            <div class="pwa-step-item">
+              <div class="pwa-step-number">2</div>
+              <div class="pwa-step-text">
+                Scroll down the share menu and select <strong>"Add to Home Screen"</strong>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin: 0 4px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>.
+              </div>
+            </div>
+            <div class="pwa-step-item">
+              <div class="pwa-step-number">3</div>
+              <div class="pwa-step-text">
+                Tap <strong>Add</strong> in the top right. <strong>DigiFamily Locker</strong> will be installed on your Home Screen!
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        guideContent.innerHTML = `
+          <div class="pwa-platform-tag">💻 / 📱 Android &amp; Desktop Instructions</div>
+          <div class="pwa-steps-container">
+            <div class="pwa-step-item">
+              <div class="pwa-step-number">1</div>
+              <div class="pwa-step-text">
+                Click your browser menu <strong>( ⋮ or ⋯ )</strong> or look for the <strong>Install Icon 📥</strong> in the address bar.
+              </div>
+            </div>
+            <div class="pwa-step-item">
+              <div class="pwa-step-number">2</div>
+              <div class="pwa-step-text">
+                Select <strong>"Install DigiFamily Locker"</strong> or <strong>"Add to Home screen"</strong>.
+              </div>
+            </div>
+            <div class="pwa-step-item">
+              <div class="pwa-step-number">3</div>
+              <div class="pwa-step-text">
+                Confirm installation to launch DigiFamily Locker as a fast, secure, standalone application!
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    showModal('pwa-install-modal');
+  }
+
+  // Trigger Install Action
+  async function triggerInstallPrompt() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`PWA Prompt Outcome: ${outcome}`);
+      if (outcome === 'accepted') {
+        deferredPrompt = null;
+        if (pwaBanner) pwaBanner.classList.add('hidden');
+        hideModal('pwa-install-modal');
+        initPWAUI();
+      }
+    } else {
+      showPWAGuideModal();
+    }
+  }
+
+  // Bind install buttons
+  if (pwaBtnInstall) {
+    pwaBtnInstall.addEventListener('click', () => {
+      triggerInstallPrompt();
+    });
+  }
+
+  if (headerInstallBtn) {
+    headerInstallBtn.addEventListener('click', () => {
+      triggerInstallPrompt();
+    });
+  }
+
+  if (pwaModalDirectBtn) {
+    pwaModalDirectBtn.addEventListener('click', () => {
+      triggerInstallPrompt();
     });
   }
 
   if (pwaBtnClose) {
     pwaBtnClose.addEventListener('click', () => {
       if (pwaBanner) pwaBanner.classList.add('hidden');
+      sessionStorage.setItem('pwa_banner_dismissed', 'true');
     });
   }
+
+  // Run on page load
+  initPWAUI();
 });
 
 // ==========================================================================
