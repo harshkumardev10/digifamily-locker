@@ -43,6 +43,11 @@ body {
   flex-direction: column;
 }
 
+/* CRITICAL: Global utility class used by the entire app for show/hide logic */
+.hidden {
+  display: none !important;
+}
+
 /* ==========================================================================
    LAYOUT & CONTAINER
    ========================================================================== */
