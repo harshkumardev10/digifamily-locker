@@ -931,62 +931,40 @@ function switchSettingsTab(tabName) {
 function openSettingsModal() {
   if (!currentMember) return;
 
-  // Reset tab views
+  // Reset tab views to Edit Profile
   switchSettingsTab("profile");
 
   // Reset forms & clear messages
-  document.getElementById("profile-settings-form").reset();
-  document.getElementById("settings-form").reset();
-  const fbForm = document.getElementById("firebase-settings-panel");
-  if (fbForm) fbForm.reset();
+  const profileForm = document.getElementById("profile-settings-form");
+  const passwordForm = document.getElementById("settings-form");
+  if (profileForm) profileForm.reset();
+  if (passwordForm) passwordForm.reset();
   
-  document.getElementById("profile-settings-error-msg").classList.add("hidden");
-  document.getElementById("profile-settings-success-msg").classList.add("hidden");
-  document.getElementById("settings-error-msg").classList.add("hidden");
-  document.getElementById("settings-success-msg").classList.add("hidden");
-  
-  const fbStatus = document.getElementById("firebase-settings-status");
-  if (fbStatus) fbStatus.classList.add("hidden");
+  const profileErr = document.getElementById("profile-settings-error-msg");
+  const profileSucc = document.getElementById("profile-settings-success-msg");
+  const passErr = document.getElementById("settings-error-msg");
+  const passSucc = document.getElementById("settings-success-msg");
+
+  if (profileErr) profileErr.classList.add("hidden");
+  if (profileSucc) profileSucc.classList.add("hidden");
+  if (passErr) passErr.classList.add("hidden");
+  if (passSucc) passSucc.classList.add("hidden");
 
   // Initialize Profile form values
-  document.getElementById("profile-edit-name").value = currentMember.name;
-  document.getElementById("profile-edit-age").value = currentMember.age;
-  document.getElementById("profile-edit-username").value = currentMember.username;
+  const nameInput = document.getElementById("profile-edit-name");
+  const ageInput = document.getElementById("profile-edit-age");
+  const usernameInput = document.getElementById("profile-edit-username");
+  const avatarPreview = document.getElementById("profile-edit-avatar-preview");
+
+  if (nameInput) nameInput.value = currentMember.name || "";
+  if (ageInput) ageInput.value = currentMember.age || "";
+  if (usernameInput) usernameInput.value = currentMember.username || "";
 
   // Set avatar preview
   uploadedEditProfileAvatarBase64 = null;
-  document.getElementById("profile-edit-avatar-preview").src = getMemberAvatarUrl(currentMember);
-
-  const importStatus = document.getElementById("import-status-msg");
-  if (importStatus) importStatus.textContent = "";
-  const importInput = document.getElementById("import-db-file");
-  if (importInput) importInput.value = "";
-  const copyMsg = document.getElementById("copy-success-msg");
-  if (copyMsg) copyMsg.classList.add("hidden");
-
-  // Load stored Firebase config to input fields
-  const storedConfig = getFirebaseConfig();
-  if (storedConfig) {
-    document.getElementById("fb-apiKey").value = storedConfig.apiKey || "";
-    document.getElementById("fb-projectId").value = storedConfig.projectId || "";
-    document.getElementById("fb-storageBucket").value = storedConfig.storageBucket || "";
-    document.getElementById("fb-authDomain").value = storedConfig.authDomain || "";
-    document.getElementById("fb-appId").value = storedConfig.appId || "";
-    
-    // Show disconnect button if connected
-    const disconnectBtn = document.getElementById("disconnect-firebase-btn");
-    if (disconnectBtn) disconnectBtn.classList.remove("hidden");
-  } else {
-    const disconnectBtn = document.getElementById("disconnect-firebase-btn");
-    if (disconnectBtn) disconnectBtn.classList.add("hidden");
-  }
-
-  // Pre-fill ImgBB key
-  const imgbbKeyEl = document.getElementById("fb-imgbbKey");
-  if (imgbbKeyEl) imgbbKeyEl.value = localStorage.getItem("docusaver_imgbb_key") || "";
+  if (avatarPreview) avatarPreview.src = getMemberAvatarUrl(currentMember);
 
   renderToonAvatarGrid();
-  renderCloudSyncUI();
 
   showModal("settings-modal");
 }
