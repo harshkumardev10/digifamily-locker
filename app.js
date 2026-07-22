@@ -1761,6 +1761,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("remove-img-btn").addEventListener("click", removeDocImage);
 
+  // Password visibility toggle buttons (Eye / Eye-Off icons)
+  document.querySelectorAll(".toggle-password-btn").forEach(btn => {
+    btn.addEventListener("click", function(e) {
+      e.preventDefault();
+      const wrap = this.closest(".password-wrap");
+      if (!wrap) return;
+      const input = wrap.querySelector("input");
+      if (!input) return;
+
+      const eyeIcon = this.querySelector(".eye-icon");
+      const eyeOffIcon = this.querySelector(".eye-off-icon");
+
+      if (input.type === "password") {
+        input.type = "text";
+        if (eyeIcon) eyeIcon.classList.add("hidden");
+        if (eyeOffIcon) eyeOffIcon.classList.remove("hidden");
+      } else {
+        input.type = "password";
+        if (eyeIcon) eyeIcon.classList.remove("hidden");
+        if (eyeOffIcon) eyeOffIcon.classList.add("hidden");
+      }
+    });
+  });
+
   // 9. Document Search & Filter tabs binding
   const searchInput = document.getElementById("doc-search");
   searchInput.addEventListener("input", (e) => {
