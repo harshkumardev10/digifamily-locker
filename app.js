@@ -2202,17 +2202,25 @@ document.addEventListener("DOMContentLoaded", () => {
   // Trigger Install Action
   async function triggerInstallPrompt() {
     if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log(`PWA Prompt Outcome: ${outcome}`);
-      if (outcome === 'accepted') {
-        deferredPrompt = null;
-        if (pwaBanner) pwaBanner.classList.add('hidden');
-        hideModal('pwa-install-modal');
-        initPWAUI();
+      try {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`PWA Prompt Outcome: ${outcome}`);
+        if (outcome === 'accepted') {
+          deferredPrompt = null;
+          if (pwaBanner) pwaBanner.classList.add('hidden');
+          initPWAUI();
+        }
+      } catch (err) {
+        console.warn("Install prompt error:", err);
       }
     } else {
-      showPWAGuideModal();
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (isIOS) {
+        alert("To install: Tap the Share button in Safari toolbar ➔ select 'Add to Home Screen'.");
+      } else {
+        alert("To install: Open browser menu (⋮ or ⋯) and select 'Install App' or 'Add to Home Screen'.");
+      }
     }
   }
 
