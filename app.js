@@ -82,6 +82,16 @@ function loadFamilies() {
   if (stored) {
     try {
       families = JSON.parse(stored);
+      // Auto-sync all local family accounts to cloud on load so other devices can log in immediately
+      if (Array.isArray(families)) {
+        setTimeout(() => {
+          families.forEach(f => {
+            if (typeof pushFamilyToCloud === "function") {
+              pushFamilyToCloud(f);
+            }
+          });
+        }, 1000);
+      }
     } catch (e) {
       families = [];
     }
@@ -194,7 +204,10 @@ async function fetchFamilyFromCloud(username) {
     if (res.ok) {
       const text = await res.text();
       if (text && text.trim().startsWith("{")) {
-        return JSON.parse(text.trim());
+        const obj = JSON.parse(text.trim());
+        if (obj && obj.username && obj.password) {
+          return obj;
+        }
       }
     }
   } catch (err) {
@@ -207,8 +220,10 @@ async function fetchFamilyFromCloud(username) {
     if (res.ok) {
       const list = await res.json();
       if (Array.isArray(list)) {
-        const item = list.reverse().find(o => o.name === `df_acc_${usernameKey}`);
-        if (item && item.data) return item.data;
+        const match = list.slice().reverse().find(o => o && o.name === `df_acc_${usernameKey}`);
+        if (match && match.data && match.data.username) {
+          return match.data;
+        }
       }
     }
   } catch (e) {}
