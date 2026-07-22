@@ -62,7 +62,7 @@ digifamily-locker/
 
 ## 🌐 Live Deployment
 
-- **Vercel Deployment**: [digifamily-locker.vercel.app](https://digifamily-locker.vercel.app)
+- **Vercel Deployment**: [digifamily-vault.vercel.app](https://digifamily-vault.vercel.app)
 - **GitHub Repository**: [github.com/harshkumardev10/digifamily-locker](https://github.com/harshkumardev10/digifamily-locker)
 
 ---
