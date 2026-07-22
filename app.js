@@ -1859,12 +1859,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function initPWAUI() {
     if (isPWAInstalled()) {
       if (pwaBanner) pwaBanner.classList.add('hidden');
+      // Completely hide install button when app is already installed
       if (headerInstallBtn) {
-        headerInstallBtn.innerHTML = `
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>App Installed</span>`;
-        headerInstallBtn.classList.add('installed-badge');
-        headerInstallBtn.disabled = true;
+        headerInstallBtn.classList.add('hidden');
+        headerInstallBtn.style.display = 'none';
       }
       return;
     }
@@ -1872,6 +1870,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // On page enter: Header install button is ALWAYS available
     if (headerInstallBtn) {
       headerInstallBtn.classList.remove('hidden');
+      headerInstallBtn.style.display = '';
     }
 
     // Show floating banner on enter (after 800ms) if not dismissed in session
