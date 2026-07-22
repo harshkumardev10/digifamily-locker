@@ -30,8 +30,6 @@ npm run dev
 
 Open http://localhost:5173
 
-**Default login:** username `ankit` / password `ankit`
-
 ---
 
 ## 🔥 Tech Stack
@@ -53,6 +51,7 @@ digifamily-locker/
 ├── index.html        # Main app HTML
 ├── app.js            # Core application logic
 ├── style.css         # Styles & animations
+├── vercel.json       # Vercel deployment config
 ├── public/
 │   ├── manifest.json # PWA manifest
 │   └── sw.js         # Service worker
@@ -61,9 +60,10 @@ digifamily-locker/
 
 ---
 
-## 🌐 Live
+## 🌐 Live Deployment
 
-> Deploy via Firebase Hosting or Vercel for a shareable link.
+- **Vercel Deployment**: [digifamily-locker.vercel.app](https://digifamily-locker.vercel.app)
+- **GitHub Repository**: [github.com/harshkumardev10/digifamily-locker](https://github.com/harshkumardev10/digifamily-locker)
 
 ---
 
