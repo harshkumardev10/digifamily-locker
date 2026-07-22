@@ -2006,11 +2006,11 @@ document.addEventListener("DOMContentLoaded", () => {
            document.referrer.includes('android-app://');
   }
 
-  // Update UI based on PWA status
+  // Update UI based on PWA install status
   function initPWAUI() {
     if (isPWAInstalled()) {
+      // App is running as installed PWA — hide everything install-related
       if (pwaBanner) pwaBanner.classList.add('hidden');
-      // Completely hide install button when app is already installed
       if (headerInstallBtn) {
         headerInstallBtn.classList.add('hidden');
         headerInstallBtn.style.display = 'none';
@@ -2018,13 +2018,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // On page enter: Header install button is ALWAYS available
+    // Not installed — show install button
     if (headerInstallBtn) {
       headerInstallBtn.classList.remove('hidden');
       headerInstallBtn.style.display = '';
     }
 
-    // Show floating banner on enter (after 800ms) if not dismissed in session
+    // Show floating banner after 800ms if not dismissed this session
     if (pwaBanner && !sessionStorage.getItem('pwa_banner_dismissed')) {
       setTimeout(() => {
         if (!isPWAInstalled()) {
@@ -2034,18 +2034,30 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Listen for native beforeinstallprompt
+  // Run on page load to set initial state
+  initPWAUI();
+
+  // Listen for native beforeinstallprompt (fires when browser decides app is installable)
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     console.log('DigiFamily Locker: beforeinstallprompt ready');
-    initPWAUI();
+    // Ensure button is visible now that we have the prompt
+    if (headerInstallBtn) {
+      headerInstallBtn.classList.remove('hidden');
+      headerInstallBtn.style.display = '';
+    }
   });
 
-  // Handle app installed event
+  // Handle app installed event — hide button immediately
   window.addEventListener('appinstalled', () => {
     console.log('DigiFamily Locker: App installed successfully');
     deferredPrompt = null;
+    if (pwaBanner) pwaBanner.classList.add('hidden');
+    if (headerInstallBtn) {
+      headerInstallBtn.classList.add('hidden');
+      headerInstallBtn.style.display = 'none';
+    }
     initPWAUI();
   });
 
