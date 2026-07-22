@@ -2599,3 +2599,189 @@ footer.app-footer {
   color: var(--primary-dark);
 }
 
+/* ==========================================================================
+   HEADER LAYOUT & HAMBURGER DRAWER MENU
+   ========================================================================== */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hamburger-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--border-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.hamburger-btn:hover {
+  background-color: rgba(12, 62, 114, 0.08);
+}
+
+/* Slide-out Navigation Drawer */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 34, 64, 0.52);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.drawer-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 300px;
+  max-width: 85vw;
+  background: var(--white);
+  box-shadow: 4px 0 25px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+}
+
+.drawer-overlay.hidden .nav-drawer {
+  transform: translateX(-100%);
+}
+
+.drawer-header {
+  padding: 20px;
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.drawer-brand h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  color: #fff;
+}
+
+.drawer-brand span {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  color: #e2e8f0;
+}
+
+.drawer-close-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.6rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+.drawer-user-info {
+  padding: 14px 18px;
+  background: #f7fafc;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.drawer-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--primary-light);
+}
+
+.drawer-user-info h4 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  margin: 0;
+}
+
+.drawer-user-info span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.drawer-menu-list {
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawer-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  padding: 8px 12px 4px 12px;
+}
+
+.drawer-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--border-radius-sm);
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+}
+
+.drawer-menu-item:hover {
+  background: #f0f4f9;
+  color: var(--primary-light);
+}
+
+.drawer-menu-item svg {
+  stroke: var(--primary-light);
+  flex-shrink: 0;
+}
+
+.drawer-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 12px 8px;
+}
+

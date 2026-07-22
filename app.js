@@ -156,6 +156,69 @@ function getMemberAvatarUrl(member) {
 }
 
 // ==========================================================================
+// NAVIGATION DRAWER (SLIDE-OUT MENU) CONTROLLER
+// ==========================================================================
+
+function openDrawer() {
+  updateDrawerUI();
+  const overlay = document.getElementById("drawer-overlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function closeDrawer() {
+  const overlay = document.getElementById("drawer-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function updateDrawerUI() {
+  const familyTitle = document.getElementById("drawer-family-name");
+  const userInfo = document.getElementById("drawer-user-info");
+  const userAvatar = document.getElementById("drawer-user-avatar");
+  const userName = document.getElementById("drawer-user-name");
+
+  const btnHome = document.getElementById("drawer-btn-home");
+  const btnAddDoc = document.getElementById("drawer-btn-add-doc");
+  const btnAddMember = document.getElementById("drawer-btn-add-member");
+  const btnSettings = document.getElementById("drawer-btn-settings");
+  const btnExitVault = document.getElementById("drawer-btn-exit-vault");
+  const btnSwitchFam = document.getElementById("drawer-btn-switch-family");
+  const btnInstall = document.getElementById("drawer-btn-install");
+
+  if (currentFamily) {
+    if (familyTitle) familyTitle.textContent = currentFamily.familyName;
+    if (btnSwitchFam) btnSwitchFam.classList.remove("hidden");
+    if (btnAddMember) btnAddMember.classList.remove("hidden");
+    if (btnHome) btnHome.classList.remove("hidden");
+  } else {
+    if (familyTitle) familyTitle.textContent = "Family Locker Vault";
+    if (btnSwitchFam) btnSwitchFam.classList.add("hidden");
+    if (btnAddMember) btnAddMember.classList.add("hidden");
+    if (btnHome) btnHome.classList.add("hidden");
+  }
+
+  if (currentMember) {
+    if (userInfo) userInfo.classList.remove("hidden");
+    if (userAvatar) userAvatar.src = getMemberAvatarUrl(currentMember);
+    if (userName) userName.textContent = currentMember.name;
+
+    if (btnAddDoc) btnAddDoc.classList.remove("hidden");
+    if (btnSettings) btnSettings.classList.remove("hidden");
+    if (btnExitVault) btnExitVault.classList.remove("hidden");
+  } else {
+    if (userInfo) userInfo.classList.add("hidden");
+    if (btnAddDoc) btnAddDoc.classList.add("hidden");
+    if (btnSettings) btnSettings.classList.add("hidden");
+    if (btnExitVault) btnExitVault.classList.add("hidden");
+  }
+
+  if (typeof isPWAInstalled === "function" && isPWAInstalled()) {
+    if (btnInstall) btnInstall.classList.add("hidden");
+  } else {
+    if (btnInstall) btnInstall.classList.remove("hidden");
+  }
+}
+
+// ==========================================================================
 // FAMILY AUTH — SIGNUP / LOGIN / LOGOUT
 // ==========================================================================
 
@@ -176,10 +239,11 @@ function showFamilyHome() {
   document.getElementById("landing-view").classList.add("hidden");
   document.getElementById("home-view").classList.remove("hidden");
   document.getElementById("dashboard-view").classList.add("hidden");
-  document.getElementById("header-family").classList.remove("hidden");
+  const famEl = document.getElementById("header-family");
+  if (famEl) famEl.classList.remove("hidden");
   document.getElementById("header-user").classList.add("hidden");
-  document.getElementById("header-family-name").textContent = currentFamily.familyName;
   renderMembers();
+  updateDrawerUI();
 }
 
 // Process family signup (create account)
@@ -630,6 +694,7 @@ function enterDashboard() {
   });
 
   renderDocuments();
+  updateDrawerUI();
 }
 
 function processLogout() {
@@ -646,6 +711,7 @@ function processLogout() {
     document.getElementById("home-view").classList.remove("hidden");
 
     renderMembers(); // Re-render to update any counts
+    updateDrawerUI();
   });
 }
 
@@ -1550,7 +1616,86 @@ document.addEventListener("DOMContentLoaded", () => {
   // 2b. Landing Page Event Listeners
   document.getElementById("family-login-form").addEventListener("submit", processFamilyLogin);
   document.getElementById("family-signup-form").addEventListener("submit", processFamilySignup);
-  document.getElementById("family-logout-btn").addEventListener("click", processFamilyLogout);
+  const famLogoutBtn = document.getElementById("family-logout-btn");
+  if (famLogoutBtn) famLogoutBtn.addEventListener("click", processFamilyLogout);
+
+  // Drawer menu toggle bindings
+  const hamburgerBtn = document.getElementById("hamburger-btn");
+  if (hamburgerBtn) hamburgerBtn.addEventListener("click", openDrawer);
+
+  const closeDrawerBtn = document.getElementById("close-drawer-btn");
+  if (closeDrawerBtn) closeDrawerBtn.addEventListener("click", closeDrawer);
+
+  const drawerOverlay = document.getElementById("drawer-overlay");
+  if (drawerOverlay) {
+    drawerOverlay.addEventListener("click", (e) => {
+      if (e.target === drawerOverlay) closeDrawer();
+    });
+  }
+
+  // Drawer menu items listeners
+  const menuHomeBtn = document.getElementById("drawer-btn-home");
+  if (menuHomeBtn) {
+    menuHomeBtn.addEventListener("click", () => {
+      closeDrawer();
+      if (currentMember) processLogout();
+      else showFamilyHome();
+    });
+  }
+
+  const menuAddDocBtn = document.getElementById("drawer-btn-add-doc");
+  if (menuAddDocBtn) {
+    menuAddDocBtn.addEventListener("click", () => {
+      closeDrawer();
+      openAddDocModal();
+    });
+  }
+
+  const menuAddMemberBtn = document.getElementById("drawer-btn-add-member");
+  if (menuAddMemberBtn) {
+    menuAddMemberBtn.addEventListener("click", () => {
+      closeDrawer();
+      document.getElementById("register-form").reset();
+      document.getElementById("reg-error-msg").classList.add("hidden");
+      uploadedCustomAvatarBase64 = null;
+      const preview = document.getElementById("reg-avatar-preview");
+      if (preview) preview.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgZmlsbD0nI0UzRjJGRCcvPjxjaXJjbGUgY3g9JzUwJyBjeT0nNDAnIHI9JzIwJyBmaWxsPScjMUU4OEU1Jy8+PHBhdGggZD0nTTIwIDg1IEMyMCA2NSwgODAgNjUsIDgwIDg1JyBmaWxsPScjMUU4OEU1Jy8+PC9zdmc+";
+      setTimeout(renderRegToonAvatarGrid, 50);
+      showModal("register-modal");
+    });
+  }
+
+  const menuSettingsBtn = document.getElementById("drawer-btn-settings");
+  if (menuSettingsBtn) {
+    menuSettingsBtn.addEventListener("click", () => {
+      closeDrawer();
+      openSettingsModal();
+    });
+  }
+
+  const menuExitVaultBtn = document.getElementById("drawer-btn-exit-vault");
+  if (menuExitVaultBtn) {
+    menuExitVaultBtn.addEventListener("click", () => {
+      closeDrawer();
+      processLogout();
+    });
+  }
+
+  const menuSwitchFamBtn = document.getElementById("drawer-btn-switch-family");
+  if (menuSwitchFamBtn) {
+    menuSwitchFamBtn.addEventListener("click", () => {
+      closeDrawer();
+      processFamilyLogout();
+    });
+  }
+
+  const menuInstallBtn = document.getElementById("drawer-btn-install");
+  if (menuInstallBtn) {
+    menuInstallBtn.addEventListener("click", () => {
+      closeDrawer();
+      triggerInstallPrompt();
+    });
+  }
 
   // Logo click → reload page
   const logoBtn = document.getElementById("logo-reload-btn");
