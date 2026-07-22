@@ -211,7 +211,11 @@ function updateDrawerUI() {
     if (btnExitVault) btnExitVault.classList.add("hidden");
   }
 
-  if (typeof isPWAInstalled === "function" && isPWAInstalled()) {
+  // Inline PWA installed check (works outside the PWA IIFE scope)
+  const pwaInstalled = window.matchMedia('(display-mode: standalone)').matches ||
+                       window.navigator.standalone === true ||
+                       document.referrer.includes('android-app://');
+  if (pwaInstalled) {
     if (btnInstall) btnInstall.classList.add("hidden");
   } else {
     if (btnInstall) btnInstall.classList.remove("hidden");
