@@ -231,7 +231,8 @@ function showLanding() {
   document.getElementById("landing-view").classList.remove("hidden");
   document.getElementById("home-view").classList.add("hidden");
   document.getElementById("dashboard-view").classList.add("hidden");
-  document.getElementById("header-family").classList.add("hidden");
+  const famEl = document.getElementById("header-family");
+  if (famEl) famEl.classList.add("hidden");
   document.getElementById("header-user").classList.add("hidden");
   currentFamily = null;
   currentMember = null;
