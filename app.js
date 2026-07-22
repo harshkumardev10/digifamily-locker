@@ -119,18 +119,9 @@ async function saveDatabase() {
     alert("Warning: Browser storage quota exceeded! Please upload smaller files.");
   }
 
-  // Debounced cloud sync (unchanged logic)
-  const syncId = localStorage.getItem("docusaver_sync_id");
-  const passphrase = localStorage.getItem("docusaver_sync_passphrase");
-  if (syncId && passphrase) {
-    clearTimeout(_cloudSyncTimer);
-    _cloudSyncTimer = setTimeout(async () => {
-      try {
-        await pushCloudDatabase(syncId, passphrase);
-      } catch (err) {
-        console.error("Cloud sync failed:", err);
-      }
-    }, 3000);
+  // Global cloud sync so all devices stay updated automatically
+  if (typeof pushFamilyToCloud === "function") {
+    pushFamilyToCloud(currentFamily);
   }
 
   // Firebase Firestore push (debounced)
@@ -149,6 +140,43 @@ async function saveDatabase() {
 
 let _cloudSyncTimer = null;
 let _firestoreSyncTimer = null;
+
+// ==========================================================================
+// GLOBAL CROSS-DEVICE CLOUD SYNC
+// Storing & fetching family accounts across devices automatically
+// ==========================================================================
+
+const GLOBAL_CLOUD_BUCKET = "https://kvdb.io/DigiFamilyVault2026Secure";
+
+async function pushFamilyToCloud(familyObj) {
+  if (!familyObj || !familyObj.username) return;
+  try {
+    const key = familyObj.username.toLowerCase();
+    const payload = JSON.stringify(familyObj);
+    await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${key}`, {
+      method: "POST",
+      body: payload
+    });
+    console.log("[Global Cloud] Synced account:", familyObj.username);
+  } catch (err) {
+    console.warn("[Global Cloud] Push error:", err.message);
+  }
+}
+
+async function fetchFamilyFromCloud(username) {
+  if (!username) return null;
+  try {
+    const key = username.toLowerCase();
+    const res = await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${key}`);
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (!text || text.trim() === "") return null;
+    return JSON.parse(text.trim());
+  } catch (err) {
+    console.warn("[Global Cloud] Fetch error:", err.message);
+    return null;
+  }
+}
 
 function getMemberAvatarUrl(member) {
   if (!member) return AVATARS.avatar1;
@@ -292,6 +320,7 @@ function processFamilySignup(event) {
 
   families.push(newFamily);
   saveFamilies();
+  pushFamilyToCloud(newFamily); // Sync account to cloud so other devices can log in
 
   // Auto-login after signup into their separate clean portal
   currentFamily = newFamily;
@@ -304,8 +333,8 @@ function processFamilySignup(event) {
   });
 }
 
-// Process family login
-function processFamilyLogin(event) {
+// Process family login (supports cross-device automatic lookup)
+async function processFamilyLogin(event) {
   event.preventDefault();
   const username = document.getElementById("fl-username").value.trim().toLowerCase();
   const password = document.getElementById("fl-password").value;
@@ -313,37 +342,74 @@ function processFamilyLogin(event) {
 
   errEl.classList.add("hidden");
 
-  const family = families.find(f => 
+  // 1. Check local storage first
+  let family = families.find(f => 
     f.username.toLowerCase() === username && f.password === password
   );
+
+  // 2. If not found locally, attempt to fetch from global cloud store for cross-device login
   if (!family) {
-    errEl.textContent = "Incorrect username or password. Please try again.";
-    errEl.classList.remove("hidden");
+    showLoader("Verifying Account", "Checking secure cloud vault...", 500, async () => {
+      const cloudFam = await fetchFamilyFromCloud(username);
+      if (cloudFam && cloudFam.password === password) {
+        // Account found in cloud and password verified!
+        const existingIdx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === username);
+        if (existingIdx !== -1) {
+          families[existingIdx] = cloudFam;
+        } else {
+          families.push(cloudFam);
+        }
+        saveFamilies();
+        currentFamily = cloudFam;
+        initDatabase();
+        localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+
+        if (db.members && db.members.length === 1) {
+          currentMember = db.members[0];
+          enterDashboard();
+        } else {
+          showFamilyHome();
+        }
+      } else {
+        errEl.textContent = "Incorrect username or password. Please try again.";
+        errEl.classList.remove("hidden");
+      }
+    });
     return;
   }
 
+  // Account found locally — log in and sync latest cloud updates in background
   currentFamily = family;
   initDatabase();
   localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
 
+  fetchFamilyFromCloud(username).then(cloudFam => {
+    if (cloudFam && cloudFam.password === password) {
+      const existingIdx = families.findIndex(f => f.id === cloudFam.id);
+      if (existingIdx !== -1) {
+        families[existingIdx] = cloudFam;
+      }
+      currentFamily = cloudFam;
+      initDatabase();
+      saveFamilies();
+      if (currentMember) {
+        const updatedM = db.members.find(m => m.id === currentMember.id);
+        if (updatedM) {
+          currentMember = updatedM;
+          enterDashboard();
+        }
+      } else {
+        renderMembers();
+      }
+    }
+  }).catch(() => {});
+
   showLoader("Opening Vault", "Connecting to vault...", 600, () => {
-    // 1. Instantly switch view to dashboard if 1 member or primary member exists, else family home
     if (db.members && db.members.length === 1) {
       currentMember = db.members[0];
       enterDashboard();
     } else {
       showFamilyHome();
-    }
-
-    // 2. Non-blocking cloud sync in background
-    if (_firestore) {
-      pullDbFromFirestore().then(pulled => {
-        if (pulled) {
-          console.log("[Firestore] Vault loaded from cloud.");
-          renderMembers();
-          if (currentMember) renderDocuments();
-        }
-      }).catch(err => console.warn("[Firestore] Could not pull on login:", err.message));
     }
   });
 }
