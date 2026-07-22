@@ -146,36 +146,67 @@ let _firestoreSyncTimer = null;
 // Storing & fetching family accounts across devices automatically
 // ==========================================================================
 
-const GLOBAL_CLOUD_BUCKET = "https://kvdb.io/DigiFamilyVault2026Secure";
+const GLOBAL_CLOUD_BUCKET = "https://kvdb.io/c8gW5mPx9qR2vZ1kL4jY7T";
 
 async function pushFamilyToCloud(familyObj) {
   if (!familyObj || !familyObj.username) return;
+  const usernameKey = familyObj.username.toLowerCase();
+  const payload = JSON.stringify(familyObj);
+
+  // Primary Endpoint: kvdb.io
   try {
-    const key = familyObj.username.toLowerCase();
-    const payload = JSON.stringify(familyObj);
-    await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${key}`, {
+    await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${usernameKey}`, {
       method: "POST",
       body: payload
     });
     console.log("[Global Cloud] Synced account:", familyObj.username);
   } catch (err) {
-    console.warn("[Global Cloud] Push error:", err.message);
+    console.warn("[Global Cloud] Primary push error:", err.message);
   }
+
+  // Backup Endpoint: restful-api.dev
+  try {
+    await fetch("https://api.restful-api.dev/objects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `df_acc_${usernameKey}`,
+        data: familyObj
+      })
+    });
+  } catch (e) {}
 }
 
 async function fetchFamilyFromCloud(username) {
   if (!username) return null;
+  const usernameKey = username.toLowerCase();
+
+  // 1. Try Primary Endpoint: kvdb.io
   try {
-    const key = username.toLowerCase();
-    const res = await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${key}`);
-    if (!res.ok) return null;
-    const text = await res.text();
-    if (!text || text.trim() === "") return null;
-    return JSON.parse(text.trim());
+    const res = await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${usernameKey}`);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && text.trim().startsWith("{")) {
+        return JSON.parse(text.trim());
+      }
+    }
   } catch (err) {
-    console.warn("[Global Cloud] Fetch error:", err.message);
-    return null;
+    console.warn("[Global Cloud] Primary fetch error:", err.message);
   }
+
+  // 2. Try Backup Endpoint: restful-api.dev
+  try {
+    const res = await fetch("https://api.restful-api.dev/objects");
+    if (res.ok) {
+      const list = await res.json();
+      if (Array.isArray(list)) {
+        const item = list.reverse().find(o => o.name === `df_acc_${usernameKey}`);
+        if (item && item.data) return item.data;
+      }
+    }
+  } catch (e) {}
+
+  return null;
 }
 
 function getMemberAvatarUrl(member) {
@@ -2053,7 +2084,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 11. PWA Service Worker & Enhanced Install Prompt System
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(err => {
+      navigator.serviceWorker.register('/sw.js').catch(err => {
         console.warn('Service worker registration failed:', err);
       });
     });
@@ -2108,8 +2139,8 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    window.deferredPWAEvent = e;
     console.log('DigiFamily Locker: beforeinstallprompt ready');
-    // Ensure button is visible now that we have the prompt
     if (headerInstallBtn) {
       headerInstallBtn.classList.remove('hidden');
       headerInstallBtn.style.display = '';
@@ -2201,13 +2232,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Trigger Install Action
   async function triggerInstallPrompt() {
-    if (deferredPrompt) {
+    const promptEvent = deferredPrompt || window.deferredPWAEvent;
+    if (promptEvent) {
       try {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`PWA Prompt Outcome: ${outcome}`);
-        if (outcome === 'accepted') {
+        promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
+        console.log(`PWA Prompt Outcome: ${choice ? choice.outcome : 'triggered'}`);
+        if (choice && choice.outcome === 'accepted') {
           deferredPrompt = null;
+          window.deferredPWAEvent = null;
           if (pwaBanner) pwaBanner.classList.add('hidden');
           initPWAUI();
         }
@@ -2215,12 +2248,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.warn("Install prompt error:", err);
       }
     } else {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-      if (isIOS) {
-        alert("To install: Tap the Share button in Safari toolbar ➔ select 'Add to Home Screen'.");
-      } else {
-        alert("To install: Open browser menu (⋮ or ⋯) and select 'Install App' or 'Add to Home Screen'.");
-      }
+      showPWAGuideModal();
     }
   }
 
