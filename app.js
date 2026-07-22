@@ -27,105 +27,9 @@ const AVATARS = {
   avatar5: `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgZmlsbD0nI0ZDRTRFQycvPjxjaXJjbGUgY3g9JzUwJyBjeT0nNDAnIHI9JzIwJyBmaWxsPScjRDgxQjYwJy8+PHBhdGggZD0nTTIwIDg1IEMyMCA2NSwgODAgNjUsIDgwIDg1JyBmaWxsPScjRDgxQjYwJy8+PC9zdmc+`
 };
 
-const SEED_MEMBERS = [
-  {
-    id: "m-1",
-    name: "Rajesh Kumar",
-    age: 48,
-    username: "rajesh",
-    avatar: "avatar1"
-  },
-  {
-    id: "m-2",
-    name: "Sunita Kumar",
-    age: 45,
-    username: "sunita",
-    avatar: "avatar5"
-  },
-  {
-    id: "m-3",
-    name: "Aarav Kumar",
-    age: 20,
-    username: "aarav",
-    avatar: "avatar2"
-  }
-];
+const SEED_MEMBERS = [];
 
-const SEED_DOCUMENTS = [
-  // Rajesh's Docs
-  {
-    id: "d-1",
-    memberId: "m-1",
-    type: "Aadhaar Card",
-    title: "Aadhaar Card",
-    number: "5824 9310 4721",
-    nameOnDoc: "Rajesh Kumar",
-    category: "identity",
-    image: null
-  },
-  {
-    id: "d-2",
-    memberId: "m-1",
-    type: "PAN Card",
-    title: "PAN Card",
-    number: "BPDPR 8923 A",
-    nameOnDoc: "RAJESH KUMAR",
-    category: "identity",
-    image: null
-  },
-  {
-    id: "d-3",
-    memberId: "m-1",
-    type: "Driving License",
-    title: "Driving License",
-    number: "DL-1420180092341",
-    nameOnDoc: "Rajesh Kumar",
-    category: "vehicle",
-    image: null
-  },
-  // Sunita's Docs
-  {
-    id: "d-4",
-    memberId: "m-2",
-    type: "Aadhaar Card",
-    title: "Aadhaar Card",
-    number: "6721 4982 9015",
-    nameOnDoc: "Sunita Kumar",
-    category: "identity",
-    image: null
-  },
-  {
-    id: "d-5",
-    memberId: "m-2",
-    type: "PAN Card",
-    title: "PAN Card",
-    number: "CPDPR 4102 K",
-    nameOnDoc: "SUNITA KUMAR",
-    category: "identity",
-    image: null
-  },
-  // Aarav's Docs
-  {
-    id: "d-6",
-    memberId: "m-3",
-    type: "Aadhaar Card",
-    title: "Aadhaar Card",
-    number: "9834 1120 5493",
-    nameOnDoc: "Aarav Kumar",
-    category: "identity",
-    image: null
-  },
-  {
-    id: "d-7",
-    memberId: "m-3",
-    type: "Class X Marksheet",
-    title: "CBSE Class X Marksheet",
-    number: "CBSE-10-8293041",
-    nameOnDoc: "Aarav Kumar",
-    category: "education",
-    image: null
-  }
-];
+const SEED_DOCUMENTS = [];
 
 // App Local Database State (scoped to current family)
 let db = {
@@ -228,9 +132,23 @@ async function saveDatabase() {
       }
     }, 3000);
   }
+
+  // Firebase Firestore push (debounced)
+  if (typeof _firestore !== "undefined" && _firestore && currentFamily) {
+    clearTimeout(_firestoreSyncTimer);
+    _firestoreSyncTimer = setTimeout(async () => {
+      try {
+        await pushDbToFirestore();
+        console.log("[Firestore] Data synced.");
+      } catch (err) {
+        console.error("[Firestore] Push failed:", err.message);
+      }
+    }, 2000);
+  }
 }
 
 let _cloudSyncTimer = null;
+let _firestoreSyncTimer = null;
 
 function getMemberAvatarUrl(member) {
   if (!member) return AVATARS.avatar1;
@@ -292,37 +210,28 @@ function processFamilySignup(event) {
     return;
   }
 
-  // Create primary family head member automatically so vault is ready immediately
-  const primaryMember = {
-    id: "m-" + Date.now(),
-    name: familyName,
-    age: 35,
-    username: username,
-    password: password,
-    avatar: "avatar1"
-  };
-
+  // Create new clean family account with 0 prebuilt cards or members
   const newFamily = {
     id: "f-" + Date.now(),
     familyName,
     username,
     password,
     createdAt: new Date().toISOString(),
-    members: [primaryMember],
+    members: [],
     documents: []
   };
 
   families.push(newFamily);
   saveFamilies();
 
-  // Auto-login after signup and open vault dashboard directly
+  // Auto-login after signup into their separate clean portal
   currentFamily = newFamily;
   initDatabase();
   localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
   
-  showLoader("Creating Vault", "Setting up your family locker...", 1200, () => {
-    currentMember = primaryMember;
-    enterDashboard();
+  showLoader("Creating Vault", "Setting up your family locker...", 600, () => {
+    currentMember = null;
+    showFamilyHome();
   });
 }
 
@@ -335,9 +244,8 @@ function processFamilyLogin(event) {
 
   errEl.classList.add("hidden");
 
-  // Allow family password OR testing password 'ankit'
   const family = families.find(f => 
-    f.username.toLowerCase() === username && (f.password === password || password === "ankit")
+    f.username.toLowerCase() === username && f.password === password
   );
   if (!family) {
     errEl.textContent = "Incorrect username or password. Please try again.";
@@ -349,25 +257,24 @@ function processFamilyLogin(event) {
   initDatabase();
   localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
 
-  showLoader("Opening Vault", "Connecting to vault...", 1200, async () => {
-    // Pull latest data from Firestore if connected
-    if (_firestore) {
-      try {
-        const pulled = await pullDbFromFirestore();
-        if (pulled) {
-          console.log("[Firestore] Vault loaded from cloud.");
-        }
-      } catch (err) {
-        console.warn("[Firestore] Could not pull on login:", err.message);
-      }
-    }
-    
-    // Auto-enter dashboard if 1 member exists, else show member select screen
+  showLoader("Opening Vault", "Connecting to vault...", 600, () => {
+    // 1. Instantly switch view to dashboard if 1 member or primary member exists, else family home
     if (db.members && db.members.length === 1) {
       currentMember = db.members[0];
       enterDashboard();
     } else {
       showFamilyHome();
+    }
+
+    // 2. Non-blocking cloud sync in background
+    if (_firestore) {
+      pullDbFromFirestore().then(pulled => {
+        if (pulled) {
+          console.log("[Firestore] Vault loaded from cloud.");
+          renderMembers();
+          if (currentMember) renderDocuments();
+        }
+      }).catch(err => console.warn("[Firestore] Could not pull on login:", err.message));
     }
   });
 }
@@ -673,8 +580,8 @@ function processLogin(event) {
 
   const member = db.members.find(m => m.id === id);
 
-  // Single family passphrase OR universal testing password 'ankit'
-  if (member && currentFamily && (passwordInput === currentFamily.password || passwordInput === "ankit")) {
+  // Member password or family passphrase
+  if (member && currentFamily && (passwordInput === currentFamily.password || (member.password && passwordInput === member.password))) {
     // Correct login
     hideModal("login-modal");
     showLoader("Verifying Identity", "Authorizing secure locker access...", 1200, () => {
@@ -707,6 +614,7 @@ function enterDashboard() {
   document.getElementById("dash-username").textContent = currentMember.username;
 
   // Display Switch
+  document.getElementById("landing-view").classList.add("hidden");
   document.getElementById("home-view").classList.add("hidden");
   document.getElementById("dashboard-view").classList.remove("hidden");
 
@@ -985,16 +893,12 @@ function removeDocImage() {
 function switchSettingsTab(tabName) {
   const profileTabBtn = document.getElementById("tab-profile-btn");
   const passwordTabBtn = document.getElementById("tab-password-btn");
-  const backupTabBtn = document.getElementById("tab-backup-btn");
-  const firebaseTabBtn = document.getElementById("tab-firebase-btn");
 
   const profileForm = document.getElementById("profile-settings-form");
   const passwordForm = document.getElementById("settings-form");
-  const backupPanel = document.getElementById("backup-settings-panel");
-  const firebasePanel = document.getElementById("firebase-settings-panel");
 
   // Deactivate all tabs and hide all panels
-  [profileTabBtn, passwordTabBtn, backupTabBtn, firebaseTabBtn].forEach(btn => {
+  [profileTabBtn, passwordTabBtn].forEach(btn => {
     if (btn) {
       btn.classList.remove("active");
       btn.style.borderBottomColor = "transparent";
@@ -1002,7 +906,7 @@ function switchSettingsTab(tabName) {
     }
   });
 
-  [profileForm, passwordForm, backupPanel, firebasePanel].forEach(panel => {
+  [profileForm, passwordForm].forEach(panel => {
     if (panel) panel.classList.add("hidden");
   });
 
@@ -1020,20 +924,6 @@ function switchSettingsTab(tabName) {
       passwordTabBtn.classList.add("active");
       passwordTabBtn.style.borderBottomColor = "var(--primary-light)";
       passwordTabBtn.style.color = "var(--primary-light)";
-    }
-  } else if (tabName === "backup") {
-    if (backupPanel) backupPanel.classList.remove("hidden");
-    if (backupTabBtn) {
-      backupTabBtn.classList.add("active");
-      backupTabBtn.style.borderBottomColor = "var(--primary-light)";
-      backupTabBtn.style.color = "var(--primary-light)";
-    }
-  } else if (tabName === "firebase") {
-    if (firebasePanel) firebasePanel.classList.remove("hidden");
-    if (firebaseTabBtn) {
-      firebaseTabBtn.classList.add("active");
-      firebaseTabBtn.style.borderBottomColor = "var(--primary-light)";
-      firebaseTabBtn.style.color = "var(--primary-light)";
     }
   }
 }
@@ -1644,29 +1534,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // 1. Load Families
   loadFamilies();
 
-  // Initialize default demo family (ankit / ankit) IF no families exist yet in storage
-  if (!families || families.length === 0) {
-    const defaultFamily = {
-      id: "f-default",
-      familyName: "Rajoriya family",
-      username: "ankit",
-      password: "ankit",
-      createdAt: new Date().toISOString(),
-      members: JSON.parse(JSON.stringify(SEED_MEMBERS)),
-      documents: JSON.parse(JSON.stringify(SEED_DOCUMENTS))
-    };
-    families = [defaultFamily];
-    saveFamilies();
-  } else {
-    // If ankit default family exists but members are empty, seed with sample profiles
-    const defaultFam = families.find(f => f.username.toLowerCase() === "ankit");
-    if (defaultFam && (!defaultFam.members || defaultFam.members.length === 0)) {
-      defaultFam.members = JSON.parse(JSON.stringify(SEED_MEMBERS));
-      defaultFam.documents = JSON.parse(JSON.stringify(SEED_DOCUMENTS));
-      saveFamilies();
-    }
-  }
-
   // 2. Restore Family & Member Session if active
   const savedFamilyId = localStorage.getItem(CURRENT_FAMILY_KEY);
   if (savedFamilyId) {
@@ -1715,13 +1582,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  document.getElementById("show-signup-btn").addEventListener("click", () => {
+  document.getElementById("show-signup-btn").addEventListener("click", (e) => {
+    e.preventDefault();
     document.getElementById("landing-login-panel").classList.add("hidden");
     document.getElementById("landing-signup-panel").classList.remove("hidden");
     document.getElementById("fs-error").classList.add("hidden");
   });
 
-  document.getElementById("show-login-btn").addEventListener("click", () => {
+  document.getElementById("show-login-btn").addEventListener("click", (e) => {
+    e.preventDefault();
     document.getElementById("landing-signup-panel").classList.add("hidden");
     document.getElementById("landing-login-panel").classList.remove("hidden");
     document.getElementById("fl-error").classList.add("hidden");
@@ -1779,15 +1648,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("tab-profile-btn").addEventListener("click", () => switchSettingsTab("profile"));
   document.getElementById("tab-password-btn").addEventListener("click", () => switchSettingsTab("password"));
-  document.getElementById("tab-backup-btn").addEventListener("click", () => switchSettingsTab("backup"));
-  const fbTabBtn = document.getElementById("tab-firebase-btn");
-  if (fbTabBtn) fbTabBtn.addEventListener("click", () => switchSettingsTab("firebase"));
   document.getElementById("profile-edit-avatar-file").addEventListener("change", handleProfileAvatarChange);
 
-  // Backup & Code Sync event bindings
-  document.getElementById("download-app-js-btn").addEventListener("click", downloadUpdatedAppJs);
-  document.getElementById("copy-seed-code-btn").addEventListener("click", handleCopySeedCode);
-  document.getElementById("export-db-json-btn").addEventListener("click", handleExportDatabase);
+  // Backup & Code Sync event bindings (if elements present)
+  const downloadBtn = document.getElementById("download-app-js-btn");
+  if (downloadBtn) downloadBtn.addEventListener("click", downloadUpdatedAppJs);
+  const copySeedBtn = document.getElementById("copy-seed-code-btn");
+  if (copySeedBtn) copySeedBtn.addEventListener("click", handleCopySeedCode);
+  const exportBtn = document.getElementById("export-db-json-btn");
+  if (exportBtn) exportBtn.addEventListener("click", handleExportDatabase);
   
   const triggerImportBtn = document.getElementById("trigger-import-db-btn");
   const importFileInput = document.getElementById("import-db-file");
@@ -2211,6 +2080,12 @@ function peRender() {
   pe.canvasW = canvasW;
   pe.canvasH = canvasH;
 
+  const container = document.getElementById("canvas-container");
+  if (container) {
+    container.style.width = canvasW + "px";
+    container.style.height = canvasH + "px";
+  }
+
   // Draw rotated + zoomed image centred on canvas, plus pan offset
   ctx.save();
   ctx.translate(canvasW / 2 + pe.panX, canvasH / 2 + pe.panY);
@@ -2243,17 +2118,39 @@ function peClampCrop() {
   const minSize = 30;
   if (pe.cropW < minSize) pe.cropW = minSize;
   if (pe.cropH < minSize) pe.cropH = minSize;
+
   if (pe.cropX < 0) pe.cropX = 0;
   if (pe.cropY < 0) pe.cropY = 0;
-  if (pe.cropX + pe.cropW > pe.canvasW) pe.cropX = pe.canvasW - pe.cropW;
-  if (pe.cropY + pe.cropH > pe.canvasH) pe.cropY = pe.canvasH - pe.cropH;
+
+  // Clamp right boundary properly without shifting cropX leftwards when expanding right
+  if (pe.cropX + pe.cropW > pe.canvasW) {
+    if (pe.drag && (pe.drag.type === "tr" || pe.drag.type === "br")) {
+      pe.cropW = Math.max(minSize, pe.canvasW - pe.cropX);
+    } else {
+      pe.cropX = pe.canvasW - pe.cropW;
+    }
+  }
+
+  // Clamp bottom boundary properly without shifting cropY upwards when expanding bottom
+  if (pe.cropY + pe.cropH > pe.canvasH) {
+    if (pe.drag && (pe.drag.type === "bl" || pe.drag.type === "br")) {
+      pe.cropH = Math.max(minSize, pe.canvasH - pe.cropY);
+    } else {
+      pe.cropY = pe.canvasH - pe.cropH;
+    }
+  }
 }
 
 function peGetPointer(e) {
   const canvas = document.getElementById("photo-editor-canvas");
   const rect = canvas.getBoundingClientRect();
-  const src = e.touches ? e.touches[0] : e;
-  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  const src = (e.touches && e.touches.length > 0) ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
+  const scaleX = rect.width ? canvas.width / rect.width : 1;
+  const scaleY = rect.height ? canvas.height / rect.height : 1;
+  return { 
+    x: (src.clientX - rect.left) * scaleX, 
+    y: (src.clientY - rect.top) * scaleY 
+  };
 }
 
 function peStartDrag(e) {
@@ -2639,7 +2536,9 @@ function renderRegToonAvatarGrid() {
 
     grid.appendChild(item);
   });
-}// ==========================================================================
+}
+
+// ==========================================================================
 // FIREBASE + IMGBB CLOUD INTEGRATION
 // ==========================================================================
 
@@ -2803,55 +2702,6 @@ async function pullDbFromFirestore() {
   saveFamilies();
   return true;
 }
-
-// ── Hook saveDatabase to also push to Firestore ───────────────────────────────
-
-const _originalSaveDatabase = saveDatabase;
-
-// Override saveDatabase to add Firestore push
-async function saveDatabase() {
-  if (!currentFamily) return;
-
-  const idx = families.findIndex(f => f.id === currentFamily.id);
-  if (idx !== -1) {
-    families[idx].members   = db.members;
-    families[idx].documents = db.documents;
-    currentFamily = families[idx];
-  }
-
-  try {
-    saveFamilies();
-  } catch (e) {
-    console.error("Failed to save locally:", e);
-    alert("Warning: Browser storage quota exceeded! Please upload smaller files.");
-  }
-
-  // Debounced kvdb cloud sync (existing)
-  const syncId     = localStorage.getItem("docusaver_sync_id");
-  const passphrase = localStorage.getItem("docusaver_sync_passphrase");
-  if (syncId && passphrase) {
-    clearTimeout(_cloudSyncTimer);
-    _cloudSyncTimer = setTimeout(async () => {
-      try { await pushCloudDatabase(syncId, passphrase); }
-      catch (err) { console.error("Cloud sync failed:", err); }
-    }, 3000);
-  }
-
-  // Firebase Firestore push (debounced)
-  if (_firestore && currentFamily) {
-    clearTimeout(_firestoreSyncTimer);
-    _firestoreSyncTimer = setTimeout(async () => {
-      try {
-        await pushDbToFirestore();
-        console.log("[Firestore] Data synced.");
-      } catch (err) {
-        console.error("[Firestore] Push failed:", err.message);
-      }
-    }, 2000);
-  }
-}
-
-let _firestoreSyncTimer = null;
 
 // ── UI Handlers ───────────────────────────────────────────────────────────────
 

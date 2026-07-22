@@ -1660,6 +1660,26 @@ footer.app-footer {
   color: var(--text-muted);
 }
 
+.github-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background-color: #24292e;
+  color: #ffffff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.github-footer-link:hover {
+  background-color: #000000;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
 /* Helper Utilities */
 .hidden {
   display: none !important;
@@ -1844,6 +1864,13 @@ footer.app-footer {
   user-select: none;
 }
 
+.canvas-container {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  max-height: 340px;
+}
+
 #photo-editor-canvas {
   display: block;
   max-width: 100%;
@@ -1851,7 +1878,7 @@ footer.app-footer {
   object-fit: contain;
 }
 
-/* Crop overlay sits exactly on top of canvas */
+/* Crop overlay sits exactly on top of canvas inside canvas-container */
 .crop-overlay {
   position: absolute;
   inset: 0;

@@ -67,4 +67,4 @@ digifamily-locker/
 
 ---
 
-*Built with ❤️ for the Rajoriya family*
+*Built with ❤️ for the family*
