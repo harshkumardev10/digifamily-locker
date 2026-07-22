@@ -1,5 +1,12 @@
 // ==========================================================================
-// APP GLOBAL STATE & SEED DATA
+// Capture beforeinstallprompt immediately at top-level so it's never missed
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.deferredPWAEvent = e;
+  console.log('[PWA] Early beforeinstallprompt captured!');
+});
+
+// INITIALIZATION & STATE MANAGEMENT
 // ==========================================================================
 
 // Multi-family storage keys
@@ -2230,7 +2237,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showModal('pwa-install-modal');
   }
 
-  // Trigger Install Action
+  // Trigger Install Action (Direct Native Installation Only)
   async function triggerInstallPrompt() {
     const promptEvent = deferredPrompt || window.deferredPWAEvent;
     if (promptEvent) {
@@ -2248,7 +2255,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.warn("Install prompt error:", err);
       }
     } else {
-      showPWAGuideModal();
+      console.log("[PWA] Direct install requested — waiting for browser prompt object");
     }
   }
 
