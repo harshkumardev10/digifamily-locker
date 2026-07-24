@@ -199,28 +199,17 @@ const GIST_TOKEN = atob("Z2hwXzE2MGUzM2hRWTlMdU1ua05PRnp2ZGdJcWwzeW5XMnN5UFhB");
 
 /**
  * Fetch all family accounts stored centrally in GitHub Gist.
- * Uses direct raw URL for instant, CORS-free, 100% reliable cross-device lookup.
+ * Uses GitHub API (not CDN-cached raw URL) so every fetch always returns the freshest data,
+ * ensuring real-time cross-device sync works correctly.
  */
 async function fetchAllFamiliesFromCloud() {
-  // Try 1: Direct Raw Gist URL (instant, no CORS restrictions, works on every browser & mobile)
+  // Try 1: GitHub API — always returns fresh, non-cached data (critical for auto-sync to work)
   try {
-    const rawRes = await fetch(`https://gist.githubusercontent.com/harshkumardev10/d741664673ab2e6fda64a53aa8ef9019/raw/accounts.json?t=${Date.now()}`);
-    if (rawRes.ok) {
-      const data = await rawRes.json();
-      if (data && typeof data === "object") {
-        return data;
-      }
-    }
-  } catch (e) {
-    console.warn("[Cloud Sync] Raw fetch error:", e.message);
-  }
-
-  // Try 2: GitHub API fallback
-  try {
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`, {
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
       headers: {
         "Authorization": `token ${GIST_TOKEN}`,
-        "Accept": "application/vnd.github.v3+json"
+        "Accept": "application/vnd.github.v3+json",
+        "Cache-Control": "no-cache"
       }
     });
     if (res.ok) {
@@ -230,6 +219,19 @@ async function fetchAllFamiliesFromCloud() {
     }
   } catch (err) {
     console.warn("[Cloud Sync] API fetch error:", err.message);
+  }
+
+  // Try 2: Raw CDN URL fallback (may be cached up to 5 min, used only if API fails)
+  try {
+    const rawRes = await fetch(`https://gist.githubusercontent.com/harshkumardev10/d741664673ab2e6fda64a53aa8ef9019/raw/accounts.json?nocache=${Date.now()}`, {
+      cache: "no-store"
+    });
+    if (rawRes.ok) {
+      const data = await rawRes.json();
+      if (data && typeof data === "object") return data;
+    }
+  } catch (e) {
+    console.warn("[Cloud Sync] Raw fetch fallback error:", e.message);
   }
 
   return {};
@@ -372,8 +374,18 @@ async function syncCurrentFamilyWithCloud() {
 
 function startCloudAutoSync() {
   if (_cloudAutoSyncInterval) clearInterval(_cloudAutoSyncInterval);
-  // Auto sync live every 5 seconds across all devices
+
+  // Fire immediately so Device B sees Device A's data right away (no waiting)
+  syncCurrentFamilyWithCloud();
+
+  // Then keep polling every 5 seconds in the background automatically
   _cloudAutoSyncInterval = setInterval(syncCurrentFamilyWithCloud, 5000);
+
+  // Also sync instantly whenever the user switches back to this tab/app on any device
+  window.addEventListener("focus", syncCurrentFamilyWithCloud);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") syncCurrentFamilyWithCloud();
+  });
 }
 
 /**
