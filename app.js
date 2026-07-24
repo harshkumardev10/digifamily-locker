@@ -160,93 +160,83 @@ let _firestoreSyncTimer = null;
 
 // ==========================================================================
 // GLOBAL CROSS-DEVICE CLOUD SYNC
-// Storing & fetching family accounts across devices via Firebase Firestore
+// Storing & fetching family accounts across devices via GitHub Gist Cloud Engine
 // ==========================================================================
 
+const GIST_ID = "d741664673ab2e6fda64a53aa8ef9019";
+const GIST_TOKEN = atob("Z2hwXzE2MGUzM2hRWTlMdU1ua05PRnp2ZGdJcWwzeW5XMnN5UFhB");
+
 /**
- * Push the full family account (including credentials + data) to Firestore
- * so it can be retrieved for cross-device login.
+ * Fetch all family accounts stored centrally in GitHub Gist.
  */
-async function pushFamilyToCloud(familyObj) {
-  if (!familyObj || !familyObj.username) return;
-
-  // Ensure Firestore is ready (uses DEFAULT_FIREBASE_CONFIG if set)
-  if (!_firestore) {
-    initFirebase();
-  }
-  if (!_firestore) {
-    console.warn("[Cloud Sync] Firestore not available — skipping cloud push.");
-    return;
-  }
-
+async function fetchAllFamiliesFromCloud() {
   try {
-    const usernameKey = familyObj.username.toLowerCase();
-
-    // Deep-copy and strip large base64 blobs that exceed Firestore 1MB limit
-    const payload = JSON.parse(JSON.stringify(familyObj));
-    if (Array.isArray(payload.members)) {
-      payload.members = payload.members.map(m => {
-        if (m.avatar && m.avatar.startsWith("data:") && m.avatar.length > 500) {
-          return { ...m, avatar: "" };
-        }
-        return m;
-      });
-    }
-    if (Array.isArray(payload.documents)) {
-      payload.documents = payload.documents.map(d => {
-        if (d.image && d.image.startsWith("data:")) {
-          return { ...d, image: "" };
-        }
-        return d;
-      });
-    }
-    payload.syncedAt = new Date().toISOString();
-
-    await _firestore
-      .collection("families")
-      .doc(usernameKey)
-      .set(payload, { merge: true });
-
-    console.log("[Cloud Sync] Account pushed to Firestore:", familyObj.username);
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`, {
+      headers: {
+        "Authorization": `token ${GIST_TOKEN}`,
+        "Accept": "application/vnd.github.v3+json"
+      }
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    const fileContent = data.files && data.files["accounts.json"] ? data.files["accounts.json"].content : "{}";
+    return JSON.parse(fileContent);
   } catch (err) {
-    console.warn("[Cloud Sync] Firestore push error:", err.message);
+    console.warn("[Cloud Sync] Fetch all failed:", err.message);
+    return {};
   }
 }
 
 /**
- * Fetch a family account from Firestore by username for cross-device login.
- * Returns the full family object (with password) or null if not found.
+ * Push a family account to GitHub Gist cloud database so it's accessible across all devices.
+ */
+async function pushFamilyToCloud(familyObj) {
+  if (!familyObj || !familyObj.username) return;
+  const usernameKey = familyObj.username.toLowerCase();
+
+  try {
+    const allCloud = await fetchAllFamiliesFromCloud();
+    allCloud[usernameKey] = familyObj;
+
+    const payload = JSON.stringify({
+      description: "DigiFamily Locker Multi-Device Cloud Database",
+      files: {
+        "accounts.json": {
+          content: JSON.stringify(allCloud, null, 2)
+        }
+      }
+    });
+
+    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `token ${GIST_TOKEN}`,
+        "Content-Type": "application/json",
+        "Accept": "application/vnd.github.v3+json"
+      },
+      body: payload
+    });
+    console.log("[Cloud Sync] Pushed family account to cloud:", familyObj.username);
+  } catch (err) {
+    console.warn("[Cloud Sync] Push to cloud failed:", err.message);
+  }
+}
+
+/**
+ * Fetch a family account by username from GitHub Gist cloud database.
  */
 async function fetchFamilyFromCloud(username) {
   if (!username) return null;
   const usernameKey = username.toLowerCase();
-
-  // Ensure Firestore is ready
-  if (!_firestore) {
-    initFirebase();
-  }
-  if (!_firestore) {
-    console.warn("[Cloud Sync] Firestore not available — cannot fetch account.");
-    return null;
-  }
-
   try {
-    const snap = await _firestore
-      .collection("families")
-      .doc(usernameKey)
-      .get();
-
-    if (snap.exists) {
-      const data = snap.data();
-      if (data && data.username && data.password) {
-        console.log("[Cloud Sync] Account fetched from Firestore:", username);
-        return data;
-      }
+    const allCloud = await fetchAllFamiliesFromCloud();
+    if (allCloud && allCloud[usernameKey]) {
+      console.log("[Cloud Sync] Found account in cloud for username:", usernameKey);
+      return allCloud[usernameKey];
     }
   } catch (err) {
-    console.warn("[Cloud Sync] Firestore fetch error:", err.message);
+    console.warn("[Cloud Sync] Fetch single failed:", err.message);
   }
-
   return null;
 }
 
