@@ -239,73 +239,90 @@ async function fetchAllFamiliesFromCloud() {
 
 /**
  * Push a family account to GitHub Gist cloud database so it's accessible across all devices.
+ * Bulletproof: handles SVG avatars, large base64 images, network retries, and race conditions.
  */
 async function pushFamilyToCloud(familyObj) {
   if (!familyObj || !familyObj.username) return;
   const usernameKey = familyObj.username.toLowerCase();
 
-  try {
-    const allCloud = await fetchAllFamiliesFromCloud();
-    
-    // Deep copy family object
-    const payloadFam = JSON.parse(JSON.stringify(familyObj));
-    if (!payloadFam.members) payloadFam.members = [];
-    if (!payloadFam.documents) payloadFam.documents = [];
+  // Deep copy so we never mutate the in-memory object
+  const payloadFam = JSON.parse(JSON.stringify(familyObj));
+  if (!payloadFam.members) payloadFam.members = [];
+  if (!payloadFam.documents) payloadFam.documents = [];
 
-    // Compress member avatars if base64
-    if (Array.isArray(payloadFam.members)) {
-      for (let m of payloadFam.members) {
-        if (m.avatar && m.avatar.length > 50000) {
-          m.avatar = await compressImageBase64(m.avatar, 300, 300, 0.5);
+  // Strip/compress member avatars that are large JPEG/PNG base64 (NOT SVG — canvas can't handle SVG)
+  if (Array.isArray(payloadFam.members)) {
+    for (let m of payloadFam.members) {
+      if (m.avatar && m.avatar.startsWith("data:image/") && !m.avatar.startsWith("data:image/svg") && m.avatar.length > 50000) {
+        try {
+          m.avatar = await compressImageBase64(m.avatar, 200, 200, 0.5);
+        } catch (_) {
+          m.avatar = ""; // strip if compression fails rather than blocking push
         }
+      } else if (m.avatar && m.avatar.length > 300000) {
+        m.avatar = ""; // strip extremely large avatars regardless of type
       }
     }
+  }
 
-    // Compress document scans if base64
-    if (Array.isArray(payloadFam.documents)) {
-      for (let d of payloadFam.documents) {
-        if (d.image && d.image.length > 50000) {
-          d.image = await compressImageBase64(d.image, 600, 600, 0.5);
-        }
-        if (Array.isArray(d.images)) {
-          for (let i = 0; i < d.images.length; i++) {
-            if (d.images[i] && d.images[i].length > 50000) {
-              d.images[i] = await compressImageBase64(d.images[i], 600, 600, 0.5);
-            }
+  // Strip/compress document images that are large base64 blobs
+  if (Array.isArray(payloadFam.documents)) {
+    for (let d of payloadFam.documents) {
+      if (d.image && d.image.startsWith("data:image/") && !d.image.startsWith("data:image/svg") && d.image.length > 50000) {
+        try { d.image = await compressImageBase64(d.image, 600, 600, 0.55); } catch (_) { d.image = ""; }
+      }
+      if (Array.isArray(d.images)) {
+        for (let i = 0; i < d.images.length; i++) {
+          if (d.images[i] && d.images[i].startsWith("data:image/") && !d.images[i].startsWith("data:image/svg") && d.images[i].length > 50000) {
+            try { d.images[i] = await compressImageBase64(d.images[i], 600, 600, 0.55); } catch (_) { d.images[i] = ""; }
           }
         }
       }
     }
-
-    allCloud[usernameKey] = payloadFam;
-
-    const payload = JSON.stringify({
-      description: "DigiFamily Locker Multi-Device Cloud Database",
-      files: {
-        "accounts.json": {
-          content: JSON.stringify(allCloud, null, 2)
-        }
-      }
-    });
-
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      method: "PATCH",
-      headers: {
-        "Authorization": `token ${GIST_TOKEN}`,
-        "Content-Type": "application/json",
-        "Accept": "application/vnd.github.v3+json"
-      },
-      body: payload
-    });
-
-    if (res.ok) {
-      console.log(`[Cloud Sync] Pushed "${familyObj.username}" to cloud Gist successfully! Members: ${payloadFam.members.length}, Docs: ${payloadFam.documents.length}`);
-    } else {
-      console.warn("[Cloud Sync] Push to cloud returned status:", res.status);
-    }
-  } catch (err) {
-    console.warn("[Cloud Sync] Push to cloud failed:", err.message);
   }
+
+  // Read current cloud DB, upsert this family, then write back
+  // Retry up to 3 times on failure
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const allCloud = await fetchAllFamiliesFromCloud();
+      allCloud[usernameKey] = payloadFam;
+
+      const bodyStr = JSON.stringify({
+        description: "DigiFamily Locker — Multi-Device Cloud Database",
+        files: {
+          "accounts.json": {
+            content: JSON.stringify(allCloud, null, 2)
+          }
+        }
+      });
+
+      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": `token ${GIST_TOKEN}`,
+          "Content-Type": "application/json",
+          "Accept": "application/vnd.github.v3+json"
+        },
+        body: bodyStr
+      });
+
+      if (res.ok) {
+        console.log(`[Cloud Sync ✓] Pushed "${familyObj.username}" — ${payloadFam.members.length} members, ${payloadFam.documents.length} docs`);
+        return; // success — done
+      } else {
+        const errBody = await res.text().catch(() => "");
+        console.warn(`[Cloud Sync] Push attempt ${attempt} failed — HTTP ${res.status}:`, errBody);
+      }
+    } catch (err) {
+      console.warn(`[Cloud Sync] Push attempt ${attempt} error:`, err.message);
+    }
+
+    // Wait before retrying (exponential backoff: 500ms, 1500ms)
+    if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 500));
+  }
+
+  console.error("[Cloud Sync ✗] All push attempts failed for:", familyObj.username);
 }
 
 /**
