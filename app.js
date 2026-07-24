@@ -121,16 +121,6 @@ function loadFamilies() {
   if (stored) {
     try {
       families = JSON.parse(stored);
-      // Auto-sync all local family accounts to cloud on load so other devices can log in immediately
-      if (Array.isArray(families)) {
-        setTimeout(() => {
-          families.forEach(f => {
-            if (typeof pushFamilyToCloud === "function") {
-              pushFamilyToCloud(f);
-            }
-          });
-        }, 1000);
-      }
     } catch (e) {
       families = [];
     }
@@ -1946,15 +1936,30 @@ document.addEventListener("DOMContentLoaded", () => {
       // Pull latest data from GitHub Gist cloud (non-blocking — re-render when data arrives)
       fetchFamilyFromCloud(fam.username).then(cloudFam => {
         if (cloudFam) {
+          // Smart merge: preserve local members & docs if cloud fetch has empty arrays
+          const cloudMembers = (cloudFam.members && cloudFam.members.length > 0) ? cloudFam.members : (fam.members || []);
+          const cloudDocs    = (cloudFam.documents && cloudFam.documents.length > 0) ? cloudFam.documents : (fam.documents || []);
+
+          cloudFam.members   = cloudMembers;
+          cloudFam.documents = cloudDocs;
+
           const idx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === fam.username.toLowerCase());
           if (idx !== -1) families[idx] = cloudFam;
           else families.push(cloudFam);
+
           currentFamily = cloudFam;
           initDatabase();
           saveFamilies();
           console.log("[Cloud Sync] Session restored with latest cloud data for:", fam.username);
+          
           renderMembers();
-          if (currentMember) renderDocuments();
+          if (currentMember) {
+            const updatedM = db.members.find(m => m.id === currentMember.id);
+            if (updatedM) {
+              currentMember = updatedM;
+              renderDocuments();
+            }
+          }
         }
       }).catch(err => console.warn("[Cloud Sync] Session pull failed:", err.message));
 
