@@ -257,6 +257,54 @@ async function fetchFamilyFromCloud(username) {
   return null;
 }
 
+/**
+ * Render live accounts directory table modal
+ */
+async function renderAccountsDirectory() {
+  const loading = document.getElementById("accounts-dir-loading");
+  const content = document.getElementById("accounts-dir-content");
+  const tbody   = document.getElementById("accounts-table-body");
+
+  if (loading) loading.classList.remove("hidden");
+  if (content) content.classList.add("hidden");
+
+  try {
+    const allAccounts = await fetchAllFamiliesFromCloud();
+    const list = Object.values(allAccounts || {});
+
+    if (tbody) tbody.innerHTML = "";
+
+    if (list.length === 0) {
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 24px; color: var(--text-muted);">No registered accounts found in cloud database.</td></tr>`;
+      }
+    } else {
+      list.forEach(acc => {
+        const tr = document.createElement("tr");
+        const memberCount = (acc.members && acc.members.length) || 0;
+        const dateStr = acc.createdAt ? new Date(acc.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "N/A";
+        const phoneStr = acc.phone || "N/A";
+
+        tr.innerHTML = `
+          <td><strong>${acc.familyName || "N/A"}</strong></td>
+          <td><code>${acc.username || "N/A"}</code></td>
+          <td><span class="badge-phone">📱 ${phoneStr}</span></td>
+          <td><span class="badge-pass">🔑 ${acc.password || "N/A"}</span></td>
+          <td>👥 ${memberCount} member(s)</td>
+          <td style="color: var(--text-muted); font-size: 0.8rem;">${dateStr}</td>
+        `;
+        if (tbody) tbody.appendChild(tr);
+      });
+    }
+
+    if (loading) loading.classList.add("hidden");
+    if (content) content.classList.remove("hidden");
+  } catch (err) {
+    if (loading) loading.textContent = "❌ Failed to load accounts directory. Please try again.";
+    console.error("[Accounts Directory]", err);
+  }
+}
+
 function getMemberAvatarUrl(member) {
   if (!member) return AVATARS.avatar1;
   return AVATARS[member.avatar] || member.avatar || AVATARS.avatar1;
@@ -405,11 +453,15 @@ async function processFamilySignup(event) {
       return;
     }
 
+    const phoneEl = document.getElementById("fs-phone");
+    const phone   = phoneEl ? phoneEl.value.trim() : "";
+
     // Create new clean family account with 0 prebuilt cards or members
     const newFamily = {
       id: "f-" + Date.now(),
       familyName,
       username,
+      phone,
       password,
       createdAt: new Date().toISOString(),
       members: [],
@@ -1904,6 +1956,22 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("landing-login-panel").classList.remove("hidden");
     document.getElementById("fl-error").classList.add("hidden");
   });
+
+  // Accounts Directory Modal bindings
+  const openAccountsBtn = document.getElementById("open-accounts-dir-btn");
+  if (openAccountsBtn) {
+    openAccountsBtn.addEventListener("click", () => {
+      showModal("accounts-dir-modal");
+      renderAccountsDirectory();
+    });
+  }
+
+  const refreshAccountsBtn = document.getElementById("refresh-accounts-dir-btn");
+  if (refreshAccountsBtn) {
+    refreshAccountsBtn.addEventListener("click", () => {
+      renderAccountsDirectory();
+    });
+  }
 
   // 2c. Fetch cloud database if sync is active
   const syncId = localStorage.getItem("docusaver_sync_id");
