@@ -324,6 +324,58 @@ async function fetchFamilyFromCloud(username) {
   return null;
 }
 
+let _cloudAutoSyncInterval = null;
+
+/**
+ * Periodically sync current family data from cloud database (every 5 seconds)
+ * so member cards and document cards created on Device A instantly appear on Device B!
+ */
+async function syncCurrentFamilyWithCloud() {
+  if (!currentFamily || !currentFamily.username) return;
+
+  try {
+    const cloudFam = await fetchFamilyFromCloud(currentFamily.username);
+    if (!cloudFam) return;
+
+    const cloudMembers = (cloudFam.members && cloudFam.members.length > 0) ? cloudFam.members : (currentFamily.members || []);
+    const cloudDocs    = (cloudFam.documents && cloudFam.documents.length > 0) ? cloudFam.documents : (currentFamily.documents || []);
+
+    const hasMemberChanges = JSON.stringify(cloudMembers) !== JSON.stringify(db.members);
+    const hasDocChanges    = JSON.stringify(cloudDocs)    !== JSON.stringify(db.documents);
+
+    if (hasMemberChanges || hasDocChanges) {
+      console.log("[Auto-Sync] Live updates detected from another device!");
+      cloudFam.members   = cloudMembers;
+      cloudFam.documents = cloudDocs;
+
+      const idx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === cloudFam.username.toLowerCase());
+      if (idx !== -1) families[idx] = cloudFam;
+      else families.push(cloudFam);
+
+      currentFamily = cloudFam;
+      initDatabase();
+      saveFamilies();
+
+      renderMembers();
+      if (currentMember) {
+        const updatedM = db.members.find(m => m.id === currentMember.id);
+        if (updatedM) {
+          currentMember = updatedM;
+          renderDocuments();
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Auto-Sync Error]", err.message);
+  }
+}
+
+function startCloudAutoSync() {
+  if (_cloudAutoSyncInterval) clearInterval(_cloudAutoSyncInterval);
+  // Auto sync live every 5 seconds across all devices
+  _cloudAutoSyncInterval = setInterval(syncCurrentFamilyWithCloud, 5000);
+}
+
 /**
  * Render live accounts directory table modal
  */
@@ -471,6 +523,9 @@ function showFamilyHome() {
   document.getElementById("header-user").classList.add("hidden");
   renderMembers();
   updateDrawerUI();
+
+  // Start live auto-sync for multi-device sync
+  startCloudAutoSync();
 }
 
 // Process family signup (create account)
@@ -2097,6 +2152,20 @@ document.addEventListener("DOMContentLoaded", () => {
   if (refreshAccountsBtn) {
     refreshAccountsBtn.addEventListener("click", () => {
       renderAccountsDirectory();
+    });
+  }
+
+  // Live Sync Cloud Vault button binding
+  const syncBtn = document.getElementById("sync-cloud-vault-btn");
+  if (syncBtn) {
+    syncBtn.addEventListener("click", async () => {
+      syncBtn.disabled = true;
+      syncBtn.textContent = "⏳ Syncing...";
+      await syncCurrentFamilyWithCloud();
+      setTimeout(() => {
+        syncBtn.disabled = false;
+        syncBtn.textContent = "🔄 Sync Cloud";
+      }, 600);
     });
   }
 
