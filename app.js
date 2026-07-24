@@ -160,73 +160,92 @@ let _firestoreSyncTimer = null;
 
 // ==========================================================================
 // GLOBAL CROSS-DEVICE CLOUD SYNC
-// Storing & fetching family accounts across devices automatically
+// Storing & fetching family accounts across devices via Firebase Firestore
 // ==========================================================================
 
-const GLOBAL_CLOUD_BUCKET = "https://kvdb.io/c8gW5mPx9qR2vZ1kL4jY7T";
-
+/**
+ * Push the full family account (including credentials + data) to Firestore
+ * so it can be retrieved for cross-device login.
+ */
 async function pushFamilyToCloud(familyObj) {
   if (!familyObj || !familyObj.username) return;
-  const usernameKey = familyObj.username.toLowerCase();
-  const payload = JSON.stringify(familyObj);
 
-  // Primary Endpoint: kvdb.io
-  try {
-    await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${usernameKey}`, {
-      method: "POST",
-      body: payload
-    });
-    console.log("[Global Cloud] Synced account:", familyObj.username);
-  } catch (err) {
-    console.warn("[Global Cloud] Primary push error:", err.message);
+  // Ensure Firestore is ready (uses DEFAULT_FIREBASE_CONFIG if set)
+  if (!_firestore) {
+    initFirebase();
+  }
+  if (!_firestore) {
+    console.warn("[Cloud Sync] Firestore not available — skipping cloud push.");
+    return;
   }
 
-  // Backup Endpoint: restful-api.dev
   try {
-    await fetch("https://api.restful-api.dev/objects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `df_acc_${usernameKey}`,
-        data: familyObj
-      })
-    });
-  } catch (e) {}
+    const usernameKey = familyObj.username.toLowerCase();
+
+    // Deep-copy and strip large base64 blobs that exceed Firestore 1MB limit
+    const payload = JSON.parse(JSON.stringify(familyObj));
+    if (Array.isArray(payload.members)) {
+      payload.members = payload.members.map(m => {
+        if (m.avatar && m.avatar.startsWith("data:") && m.avatar.length > 500) {
+          return { ...m, avatar: "" };
+        }
+        return m;
+      });
+    }
+    if (Array.isArray(payload.documents)) {
+      payload.documents = payload.documents.map(d => {
+        if (d.image && d.image.startsWith("data:")) {
+          return { ...d, image: "" };
+        }
+        return d;
+      });
+    }
+    payload.syncedAt = new Date().toISOString();
+
+    await _firestore
+      .collection("families")
+      .doc(usernameKey)
+      .set(payload, { merge: true });
+
+    console.log("[Cloud Sync] Account pushed to Firestore:", familyObj.username);
+  } catch (err) {
+    console.warn("[Cloud Sync] Firestore push error:", err.message);
+  }
 }
 
+/**
+ * Fetch a family account from Firestore by username for cross-device login.
+ * Returns the full family object (with password) or null if not found.
+ */
 async function fetchFamilyFromCloud(username) {
   if (!username) return null;
   const usernameKey = username.toLowerCase();
 
-  // 1. Try Primary Endpoint: kvdb.io
+  // Ensure Firestore is ready
+  if (!_firestore) {
+    initFirebase();
+  }
+  if (!_firestore) {
+    console.warn("[Cloud Sync] Firestore not available — cannot fetch account.");
+    return null;
+  }
+
   try {
-    const res = await fetch(`${GLOBAL_CLOUD_BUCKET}/fam_${usernameKey}`);
-    if (res.ok) {
-      const text = await res.text();
-      if (text && text.trim().startsWith("{")) {
-        const obj = JSON.parse(text.trim());
-        if (obj && obj.username && obj.password) {
-          return obj;
-        }
+    const snap = await _firestore
+      .collection("families")
+      .doc(usernameKey)
+      .get();
+
+    if (snap.exists) {
+      const data = snap.data();
+      if (data && data.username && data.password) {
+        console.log("[Cloud Sync] Account fetched from Firestore:", username);
+        return data;
       }
     }
   } catch (err) {
-    console.warn("[Global Cloud] Primary fetch error:", err.message);
+    console.warn("[Cloud Sync] Firestore fetch error:", err.message);
   }
-
-  // 2. Try Backup Endpoint: restful-api.dev
-  try {
-    const res = await fetch("https://api.restful-api.dev/objects");
-    if (res.ok) {
-      const list = await res.json();
-      if (Array.isArray(list)) {
-        const match = list.slice().reverse().find(o => o && o.name === `df_acc_${usernameKey}`);
-        if (match && match.data && match.data.username) {
-          return match.data;
-        }
-      }
-    }
-  } catch (e) {}
 
   return null;
 }
@@ -400,10 +419,20 @@ async function processFamilyLogin(event) {
     f.username.toLowerCase() === username && f.password === password
   );
 
-  // 2. If not found locally, attempt to fetch from global cloud store for cross-device login
+  // 2. If not found locally, attempt to fetch from Firestore for cross-device login
   if (!family) {
-    showLoader("Verifying Account", "Checking secure cloud vault...", 500, async () => {
+    // Show loader immediately and keep it visible while we wait for Firestore
+    const loader = document.getElementById("app-loader");
+    if (loader) {
+      document.getElementById("loader-title").textContent = "Verifying Account";
+      document.getElementById("loader-status").textContent = "Checking secure cloud vault...";
+      loader.classList.remove("hidden");
+    }
+
+    try {
       const cloudFam = await fetchFamilyFromCloud(username);
+      if (loader) loader.classList.add("hidden");
+
       if (cloudFam && cloudFam.password === password) {
         // Account found in cloud and password verified!
         const existingIdx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === username);
@@ -417,17 +446,24 @@ async function processFamilyLogin(event) {
         initDatabase();
         localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
 
-        if (db.members && db.members.length === 1) {
-          currentMember = db.members[0];
-          enterDashboard();
-        } else {
-          showFamilyHome();
-        }
+        showLoader("Opening Vault", "Connecting to vault...", 600, () => {
+          if (db.members && db.members.length === 1) {
+            currentMember = db.members[0];
+            enterDashboard();
+          } else {
+            showFamilyHome();
+          }
+        });
       } else {
         errEl.textContent = "Incorrect username or password. Please try again.";
         errEl.classList.remove("hidden");
       }
-    });
+    } catch (err) {
+      if (loader) loader.classList.add("hidden");
+      errEl.textContent = "Connection error. Please check your internet and try again.";
+      errEl.classList.remove("hidden");
+      console.error("[Login] Cloud fetch error:", err);
+    }
     return;
   }
 
