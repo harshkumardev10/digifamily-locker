@@ -52,7 +52,7 @@ let currentFamily = null;   // the logged-in family object
 let currentMember = null;   // the member who opened their vault
 let currentFilterCategory = "all";
 let currentSearchQuery = "";
-let uploadedDocImageBase64 = null;
+let uploadedDocImagesBase64 = []; // supports multiple images per document
 let uploadedCustomAvatarBase64 = null;
 let uploadedEditProfileAvatarBase64 = null;
 
@@ -1011,9 +1011,11 @@ function openAddDocModal() {
   document.getElementById("doc-form").reset();
   document.getElementById("edit-doc-id").value = "";
   
-  // Reset image preview state
-  uploadedDocImageBase64 = null;
-  document.getElementById("image-preview-container").classList.add("hidden");
+  // Reset multi-image state
+  uploadedDocImagesBase64 = [];
+  const container = document.getElementById("image-preview-container");
+  container.innerHTML = "";
+  container.classList.add("hidden");
   document.getElementById("upload-zone").classList.remove("hidden");
 
   showModal("doc-modal");
@@ -1056,9 +1058,10 @@ function processDocSubmit(event) {
       db.documents[docIndex].number = number;
       db.documents[docIndex].nameOnDoc = nameOnDoc;
       db.documents[docIndex].category = category;
-      // Update image if a new one was uploaded
-      if (uploadedDocImageBase64) {
-        db.documents[docIndex].image = uploadedDocImageBase64;
+      // Update images if new ones were uploaded
+      if (uploadedDocImagesBase64.length > 0) {
+        db.documents[docIndex].images = uploadedDocImagesBase64;
+        db.documents[docIndex].image = uploadedDocImagesBase64[0]; // keep backward compat
       }
     }
   } else {
@@ -1071,7 +1074,8 @@ function processDocSubmit(event) {
       number,
       nameOnDoc,
       category,
-      image: uploadedDocImageBase64
+      images: uploadedDocImagesBase64,
+      image: uploadedDocImagesBase64[0] || null // first image for backward compat
     };
     db.documents.push(newDoc);
   }
@@ -1092,14 +1096,22 @@ function openViewDocModal(docId) {
   const detailBlock  = document.getElementById("doc-detail-block");
   const scanDisplay  = document.getElementById("doc-attachment-display");
 
-  if (doc.image) {
-    // Show clean info card + uploaded image scan
+  // Support both multi-image (images[]) and legacy single image
+  const allImages = (doc.images && doc.images.length > 0) ? doc.images : (doc.image ? [doc.image] : []);
+
+  if (allImages.length > 0) {
+    // Show clean info card + all uploaded image scans as gallery
     comingSoon.classList.add("hidden");
     detailBlock.classList.remove("hidden");
     renderMockCard(doc);
-    scanDisplay.innerHTML = `<img src="${doc.image}" alt="${doc.title} Scan Image">`;
+    scanDisplay.innerHTML = allImages.map((imgSrc, i) => `
+      <div style="margin-bottom: 14px;">
+        <p style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">📄 Image ${i + 1} of ${allImages.length}</p>
+        <img src="${imgSrc}" alt="${doc.title} Scan ${i + 1}" style="width:100%; border-radius: 8px; border: 1px solid var(--border-color);">
+      </div>
+    `).join("");
   } else {
-    // No image — show ONLY Coming Soon, nothing else
+    // No image — show ONLY Coming Soon
     comingSoon.classList.remove("hidden");
     detailBlock.classList.add("hidden");
   }
@@ -1135,18 +1147,19 @@ function openEditDocModal(docId) {
   document.getElementById("doc-number").value = doc.number;
   document.getElementById("doc-name").value = doc.nameOnDoc;
 
-  // Restore image preview if available
+  // Restore multi-image previews
+  const allImages = (doc.images && doc.images.length > 0) ? doc.images : (doc.image ? [doc.image] : []);
   const imgPreviewContainer = document.getElementById("image-preview-container");
-  const imgPreview = document.getElementById("image-preview");
   const uploadZone = document.getElementById("upload-zone");
 
-  if (doc.image) {
-    uploadedDocImageBase64 = doc.image;
-    imgPreview.src = doc.image;
+  uploadedDocImagesBase64 = [...allImages];
+  imgPreviewContainer.innerHTML = "";
+
+  if (allImages.length > 0) {
+    allImages.forEach((imgSrc, i) => renderDocImageThumb(imgSrc, i));
     imgPreviewContainer.classList.remove("hidden");
     uploadZone.classList.add("hidden");
   } else {
-    uploadedDocImageBase64 = null;
     imgPreviewContainer.classList.add("hidden");
     uploadZone.classList.remove("hidden");
   }
@@ -1154,38 +1167,67 @@ function openEditDocModal(docId) {
   showModal("doc-modal");
 }
 
-// Handle Drag & Drop / File Select for base64 image upload
+// Render a single image thumbnail with remove button inside the preview container
+function renderDocImageThumb(imgSrc, index) {
+  const container = document.getElementById("image-preview-container");
+  const wrap = document.createElement("div");
+  wrap.className = "doc-img-thumb-wrap";
+  wrap.dataset.index = index;
+  wrap.innerHTML = `
+    <img src="${imgSrc}" alt="Doc image ${index + 1}">
+    <button type="button" class="remove-thumb-btn" title="Remove image">&times;</button>
+  `;
+  wrap.querySelector(".remove-thumb-btn").addEventListener("click", () => {
+    uploadedDocImagesBase64.splice(index, 1);
+    rebuildDocImagePreviews();
+  });
+  container.appendChild(wrap);
+}
+
+function rebuildDocImagePreviews() {
+  const container = document.getElementById("image-preview-container");
+  const uploadZone = document.getElementById("upload-zone");
+  container.innerHTML = "";
+  uploadedDocImagesBase64.forEach((src, i) => renderDocImageThumb(src, i));
+  if (uploadedDocImagesBase64.length > 0) {
+    container.classList.remove("hidden");
+  } else {
+    container.classList.add("hidden");
+    uploadZone.classList.remove("hidden");
+  }
+}
+
+// Handle Drag & Drop / File Select for multi-image upload
 function handleFileSelect(file) {
   if (!file || !file.type.match('image.*')) {
     alert("Please select a valid image file (PNG, JPG, WEBP).");
     return;
   }
-
-  // Cap size check - browser localStorage fits approx 5MB, so base64 size should be limited
   if (file.size > 1.5 * 1024 * 1024) {
-    alert("Image is too large! Please upload files under 1.5MB to save securely in the local database.");
+    alert("Image is too large! Please upload files under 1.5MB.");
     return;
   }
 
   const reader = new FileReader();
   reader.onload = function(event) {
-    uploadedDocImageBase64 = event.target.result;
-    
-    // Update preview UI
-    const imgPreview = document.getElementById("image-preview");
-    const imgPreviewContainer = document.getElementById("image-preview-container");
-    const uploadZone = document.getElementById("upload-zone");
+    const base64 = event.target.result;
+    const idx = uploadedDocImagesBase64.length;
+    uploadedDocImagesBase64.push(base64);
 
-    imgPreview.src = uploadedDocImageBase64;
-    imgPreviewContainer.classList.remove("hidden");
-    uploadZone.classList.add("hidden");
+    const container = document.getElementById("image-preview-container");
+    const uploadZone = document.getElementById("upload-zone");
+    container.classList.remove("hidden");
+    uploadZone.classList.remove("hidden"); // keep zone visible so more can be added
+    renderDocImageThumb(base64, idx);
   };
   reader.readAsDataURL(file);
 }
 
 function removeDocImage() {
-  uploadedDocImageBase64 = null;
-  document.getElementById("image-preview-container").classList.add("hidden");
+  uploadedDocImagesBase64 = [];
+  const container = document.getElementById("image-preview-container");
+  container.innerHTML = "";
+  container.classList.add("hidden");
   document.getElementById("upload-zone").classList.remove("hidden");
   document.getElementById("doc-image-input").value = "";
 }
@@ -1825,16 +1867,20 @@ document.addEventListener("DOMContentLoaded", () => {
       initDatabase();
       showFamilyHome();
 
-      // Pull latest data from Firestore (non-blocking — re-render if data arrives)
-      if (_firestore) {
-        pullDbFromFirestore().then(pulled => {
-          if (pulled) {
-            console.log("[Firestore] Session restored from cloud.");
-            renderMembers();
-            renderDocuments();
-          }
-        }).catch(err => console.warn("[Firestore] Session pull failed:", err.message));
-      }
+      // Pull latest data from GitHub Gist cloud (non-blocking — re-render when data arrives)
+      fetchFamilyFromCloud(fam.username).then(cloudFam => {
+        if (cloudFam) {
+          const idx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === fam.username.toLowerCase());
+          if (idx !== -1) families[idx] = cloudFam;
+          else families.push(cloudFam);
+          currentFamily = cloudFam;
+          initDatabase();
+          saveFamilies();
+          console.log("[Cloud Sync] Session restored with latest cloud data for:", fam.username);
+          renderMembers();
+          if (currentMember) renderDocuments();
+        }
+      }).catch(err => console.warn("[Cloud Sync] Session pull failed:", err.message));
 
       const savedMemberId = localStorage.getItem(CURRENT_MEMBER_KEY);
       if (savedMemberId) {
@@ -2127,9 +2173,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   uploadZone.addEventListener("click", () => fileInput.click());
   
+  // Multi-file change handler
   fileInput.addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileSelect(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      Array.from(e.target.files).forEach(file => handleFileSelect(file));
+      e.target.value = ""; // reset so same file can be re-added
     }
   });
 
@@ -2153,12 +2201,10 @@ document.addEventListener("DOMContentLoaded", () => {
   uploadZone.addEventListener('drop', (e) => {
     const dt = e.dataTransfer;
     const files = dt.files;
-    if (files && files[0]) {
-      handleFileSelect(files[0]);
+    if (files && files.length > 0) {
+      Array.from(files).forEach(file => handleFileSelect(file));
     }
   });
-
-  document.getElementById("remove-img-btn").addEventListener("click", removeDocImage);
 
   // Password visibility toggle buttons (Eye / Eye-Off icons)
   document.querySelectorAll(".toggle-password-btn").forEach(btn => {
