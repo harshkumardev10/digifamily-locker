@@ -59,6 +59,7 @@ let uploadedEditProfileAvatarBase64 = null;
 /**
  * Compress base64 images so payload size stays tiny (~20-40KB)
  * allowing instant multi-device cloud database syncing without payload caps.
+ * Includes a 500ms safety timeout so it never hangs or blocks cloud push.
  */
 function compressImageBase64(base64Str, maxWidth = 800, maxHeight = 800, quality = 0.6) {
   return new Promise((resolve) => {
@@ -66,8 +67,14 @@ function compressImageBase64(base64Str, maxWidth = 800, maxHeight = 800, quality
       resolve(base64Str);
       return;
     }
+
+    let timer = setTimeout(() => {
+      resolve(base64Str);
+    }, 500);
+
     const img = new Image();
     img.onload = () => {
+      clearTimeout(timer);
       let width = img.width;
       let height = img.height;
 
@@ -90,7 +97,10 @@ function compressImageBase64(base64Str, maxWidth = 800, maxHeight = 800, quality
       const compressedData = canvas.toDataURL("image/jpeg", quality);
       resolve(compressedData);
     };
-    img.onerror = () => resolve(base64Str);
+    img.onerror = () => {
+      clearTimeout(timer);
+      resolve(base64Str);
+    };
     img.src = base64Str;
   });
 }
@@ -346,8 +356,8 @@ async function fetchFamilyFromCloud(username) {
 let _cloudAutoSyncInterval = null;
 
 /**
- * Periodically sync current family data from cloud database (every 5 seconds)
- * so member cards and document cards created on Device A instantly appear on Device B!
+ * Periodically sync current family data from cloud database (every 3 seconds)
+ * so member cards and document cards created on Device A instantly appear on Device B & C!
  */
 async function syncCurrentFamilyWithCloud() {
   if (!currentFamily || !currentFamily.username) return;
@@ -356,8 +366,8 @@ async function syncCurrentFamilyWithCloud() {
     const cloudFam = await fetchFamilyFromCloud(currentFamily.username);
     if (!cloudFam) return;
 
-    const cloudMembers = (cloudFam.members && cloudFam.members.length > 0) ? cloudFam.members : (currentFamily.members || []);
-    const cloudDocs    = (cloudFam.documents && cloudFam.documents.length > 0) ? cloudFam.documents : (currentFamily.documents || []);
+    const cloudMembers = Array.isArray(cloudFam.members) ? cloudFam.members : [];
+    const cloudDocs    = Array.isArray(cloudFam.documents) ? cloudFam.documents : [];
 
     const hasMemberChanges = JSON.stringify(cloudMembers) !== JSON.stringify(db.members);
     const hasDocChanges    = JSON.stringify(cloudDocs)    !== JSON.stringify(db.documents);
@@ -392,11 +402,11 @@ async function syncCurrentFamilyWithCloud() {
 function startCloudAutoSync() {
   if (_cloudAutoSyncInterval) clearInterval(_cloudAutoSyncInterval);
 
-  // Fire immediately so Device B sees Device A's data right away (no waiting)
+  // Fire immediately so Device B/C sees Device A's data right away
   syncCurrentFamilyWithCloud();
 
-  // Then keep polling every 5 seconds in the background automatically
-  _cloudAutoSyncInterval = setInterval(syncCurrentFamilyWithCloud, 5000);
+  // Poll continuously every 3 seconds across all devices
+  _cloudAutoSyncInterval = setInterval(syncCurrentFamilyWithCloud, 3000);
 
   // Also sync instantly whenever the user switches back to this tab/app on any device
   window.addEventListener("focus", syncCurrentFamilyWithCloud);
