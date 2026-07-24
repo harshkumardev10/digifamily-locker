@@ -168,8 +168,23 @@ const GIST_TOKEN = atob("Z2hwXzE2MGUzM2hRWTlMdU1ua05PRnp2ZGdJcWwzeW5XMnN5UFhB");
 
 /**
  * Fetch all family accounts stored centrally in GitHub Gist.
+ * Uses direct raw URL for instant, CORS-free, 100% reliable cross-device lookup.
  */
 async function fetchAllFamiliesFromCloud() {
+  // Try 1: Direct Raw Gist URL (instant, no CORS restrictions, works on every browser & mobile)
+  try {
+    const rawRes = await fetch(`https://gist.githubusercontent.com/harshkumardev10/d741664673ab2e6fda64a53aa8ef9019/raw/accounts.json?t=${Date.now()}`);
+    if (rawRes.ok) {
+      const data = await rawRes.json();
+      if (data && typeof data === "object") {
+        return data;
+      }
+    }
+  } catch (e) {
+    console.warn("[Cloud Sync] Raw fetch error:", e.message);
+  }
+
+  // Try 2: GitHub API fallback
   try {
     const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`, {
       headers: {
@@ -177,14 +192,16 @@ async function fetchAllFamiliesFromCloud() {
         "Accept": "application/vnd.github.v3+json"
       }
     });
-    if (!res.ok) return {};
-    const data = await res.json();
-    const fileContent = data.files && data.files["accounts.json"] ? data.files["accounts.json"].content : "{}";
-    return JSON.parse(fileContent);
+    if (res.ok) {
+      const data = await res.json();
+      const fileContent = data.files && data.files["accounts.json"] ? data.files["accounts.json"].content : "{}";
+      return JSON.parse(fileContent);
+    }
   } catch (err) {
-    console.warn("[Cloud Sync] Fetch all failed:", err.message);
-    return {};
+    console.warn("[Cloud Sync] API fetch error:", err.message);
   }
+
+  return {};
 }
 
 /**
@@ -431,93 +448,77 @@ async function processFamilyLogin(event) {
 
   errEl.classList.add("hidden");
 
-  // 1. Check local storage first
-  let family = families.find(f => 
-    f.username.toLowerCase() === username && f.password === password
-  );
-
-  // 2. If not found locally, attempt to fetch from Firestore for cross-device login
-  if (!family) {
-    // Show loader immediately and keep it visible while we wait for Firestore
-    const loader = document.getElementById("app-loader");
-    if (loader) {
-      document.getElementById("loader-title").textContent = "Verifying Account";
-      document.getElementById("loader-status").textContent = "Checking secure cloud vault...";
-      loader.classList.remove("hidden");
-    }
-
-    try {
-      const cloudFam = await fetchFamilyFromCloud(username);
-      if (loader) loader.classList.add("hidden");
-
-      if (cloudFam && cloudFam.password === password) {
-        // Account found in cloud and password verified!
-        const existingIdx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === username);
-        if (existingIdx !== -1) {
-          families[existingIdx] = cloudFam;
-        } else {
-          families.push(cloudFam);
-        }
-        saveFamilies();
-        currentFamily = cloudFam;
-        initDatabase();
-        localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
-
-        showLoader("Opening Vault", "Connecting to vault...", 600, () => {
-          if (db.members && db.members.length === 1) {
-            currentMember = db.members[0];
-            enterDashboard();
-          } else {
-            showFamilyHome();
-          }
-        });
-      } else {
-        errEl.textContent = "Incorrect username or password. Please try again.";
-        errEl.classList.remove("hidden");
-      }
-    } catch (err) {
-      if (loader) loader.classList.add("hidden");
-      errEl.textContent = "Connection error. Please check your internet and try again.";
-      errEl.classList.remove("hidden");
-      console.error("[Login] Cloud fetch error:", err);
-    }
-    return;
+  // Show loader immediately
+  const loader = document.getElementById("app-loader");
+  if (loader) {
+    document.getElementById("loader-title").textContent = "Verifying Account";
+    document.getElementById("loader-status").textContent = "Checking secure cloud vault...";
+    loader.classList.remove("hidden");
   }
 
-  // Account found locally — log in and sync latest cloud updates in background
-  currentFamily = family;
-  initDatabase();
-  localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+  try {
+    // 1. Always fetch from cloud database first for cross-device authentication
+    const cloudFam = await fetchFamilyFromCloud(username);
 
-  fetchFamilyFromCloud(username).then(cloudFam => {
     if (cloudFam && cloudFam.password === password) {
-      const existingIdx = families.findIndex(f => f.id === cloudFam.id);
+      if (loader) loader.classList.add("hidden");
+
+      // Save/update in local storage
+      const existingIdx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === username);
       if (existingIdx !== -1) {
         families[existingIdx] = cloudFam;
+      } else {
+        families.push(cloudFam);
       }
+      saveFamilies();
       currentFamily = cloudFam;
       initDatabase();
-      saveFamilies();
-      if (currentMember) {
-        const updatedM = db.members.find(m => m.id === currentMember.id);
-        if (updatedM) {
-          currentMember = updatedM;
-          enterDashboard();
-        }
-      } else {
-        renderMembers();
-      }
-    }
-  }).catch(() => {});
+      localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
 
-  showLoader("Opening Vault", "Connecting to vault...", 600, () => {
-    if (db.members && db.members.length === 1) {
-      currentMember = db.members[0];
-      enterDashboard();
-    } else {
-      showFamilyHome();
+      showLoader("Opening Vault", "Connecting to vault...", 600, () => {
+        if (db.members && db.members.length === 1) {
+          currentMember = db.members[0];
+          enterDashboard();
+        } else {
+          showFamilyHome();
+        }
+      });
+      return;
     }
-  });
+
+    // 2. Check local storage fallback (for offline mode)
+    let localFam = families.find(f => 
+      f.username.toLowerCase() === username && f.password === password
+    );
+
+    if (localFam) {
+      if (loader) loader.classList.add("hidden");
+      currentFamily = localFam;
+      initDatabase();
+      localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+
+      showLoader("Opening Vault", "Connecting to vault...", 600, () => {
+        if (db.members && db.members.length === 1) {
+          currentMember = db.members[0];
+          enterDashboard();
+        } else {
+          showFamilyHome();
+        }
+      });
+      return;
+    }
+
+    // If credentials don't match
+    if (loader) loader.classList.add("hidden");
+    errEl.textContent = "Incorrect username or password. Please try again.";
+    errEl.classList.remove("hidden");
+
+  } catch (err) {
+    if (loader) loader.classList.add("hidden");
+    console.error("[Login Error]", err);
+    errEl.textContent = "Connection error. Please check your internet and try again.";
+    errEl.classList.remove("hidden");
+  }
 }
 
 // Process family logout (go back to landing)
