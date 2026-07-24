@@ -160,15 +160,20 @@ function initDatabase() {
 async function saveDatabase() {
   if (!currentFamily) return;
 
-  // Sync db into the family object
-  const idx = families.findIndex(f => f.id === currentFamily.id);
+  // Ensure currentFamily object holds latest members and documents
+  currentFamily.members = db.members || [];
+  currentFamily.documents = db.documents || [];
+
+  // Update or insert into families array (match by ID or username)
+  const idx = families.findIndex(f => 
+    (f.id && currentFamily.id && f.id === currentFamily.id) || 
+    (f.username && currentFamily.username && f.username.toLowerCase() === currentFamily.username.toLowerCase())
+  );
+  
   if (idx !== -1) {
-    families[idx].members = db.members;
-    families[idx].documents = db.documents;
-    currentFamily = families[idx];
+    families[idx] = currentFamily;
   } else {
-    currentFamily.members = db.members;
-    currentFamily.documents = db.documents;
+    families.push(currentFamily);
   }
 
   try {
