@@ -342,7 +342,7 @@ function showFamilyHome() {
 }
 
 // Process family signup (create account)
-function processFamilySignup(event) {
+async function processFamilySignup(event) {
   event.preventDefault();
   const familyName = document.getElementById("fs-family-name").value.trim();
   const username   = document.getElementById("fs-username").value.trim().toLowerCase();
@@ -362,37 +362,64 @@ function processFamilySignup(event) {
     errEl.classList.remove("hidden");
     return;
   }
-  const taken = families.some(f => f.username.toLowerCase() === username);
-  if (taken) {
+
+  // Check locally first
+  const localTaken = families.some(f => f.username.toLowerCase() === username);
+  if (localTaken) {
     errEl.textContent = "Username already taken. Please choose another.";
     errEl.classList.remove("hidden");
     return;
   }
 
-  // Create new clean family account with 0 prebuilt cards or members
-  const newFamily = {
-    id: "f-" + Date.now(),
-    familyName,
-    username,
-    password,
-    createdAt: new Date().toISOString(),
-    members: [],
-    documents: []
-  };
+  // Show loader while checking cloud and saving
+  const loader = document.getElementById("app-loader");
+  if (loader) {
+    document.getElementById("loader-title").textContent = "Creating Vault";
+    document.getElementById("loader-status").textContent = "Syncing account across devices...";
+    loader.classList.remove("hidden");
+  }
 
-  families.push(newFamily);
-  saveFamilies();
-  pushFamilyToCloud(newFamily); // Sync account to cloud so other devices can log in
+  try {
+    const cloudCheck = await fetchFamilyFromCloud(username);
+    if (cloudCheck) {
+      if (loader) loader.classList.add("hidden");
+      errEl.textContent = "Username already taken. Please choose another.";
+      errEl.classList.remove("hidden");
+      return;
+    }
 
-  // Auto-login after signup into their separate clean portal
-  currentFamily = newFamily;
-  initDatabase();
-  localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
-  
-  showLoader("Creating Vault", "Setting up your family locker...", 600, () => {
+    // Create new clean family account with 0 prebuilt cards or members
+    const newFamily = {
+      id: "f-" + Date.now(),
+      familyName,
+      username,
+      password,
+      createdAt: new Date().toISOString(),
+      members: [],
+      documents: []
+    };
+
+    families.push(newFamily);
+    saveFamilies();
+
+    // Await cloud sync so the account is immediately active for all devices
+    await pushFamilyToCloud(newFamily);
+
+    if (loader) loader.classList.add("hidden");
+
+    // Auto-login after signup into their separate clean portal
+    currentFamily = newFamily;
+    initDatabase();
+    localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+    
     currentMember = null;
     showFamilyHome();
-  });
+  } catch (err) {
+    if (loader) loader.classList.add("hidden");
+    console.error("[Signup Error]", err);
+    errEl.textContent = "Could not sync account to cloud. Please check connection and try again.";
+    errEl.classList.remove("hidden");
+  }
 }
 
 // Process family login (supports cross-device automatic lookup)
