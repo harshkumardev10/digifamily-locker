@@ -56,6 +56,45 @@ let uploadedDocImagesBase64 = []; // supports multiple images per document
 let uploadedCustomAvatarBase64 = null;
 let uploadedEditProfileAvatarBase64 = null;
 
+/**
+ * Compress base64 images so payload size stays tiny (~20-40KB)
+ * allowing instant multi-device cloud database syncing without payload caps.
+ */
+function compressImageBase64(base64Str, maxWidth = 800, maxHeight = 800, quality = 0.6) {
+  return new Promise((resolve) => {
+    if (!base64Str || typeof base64Str !== "string" || !base64Str.startsWith("data:image")) {
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth || height > maxHeight) {
+        if (width / height > maxWidth / maxHeight) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const compressedData = canvas.toDataURL("image/jpeg", quality);
+      resolve(compressedData);
+    };
+    img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
+  });
+}
+
 // Premium buffering loader overlay controller
 function showLoader(title, status, durationMs, callback) {
   const loader = document.getElementById("app-loader");
@@ -127,18 +166,20 @@ async function saveDatabase() {
     families[idx].members = db.members;
     families[idx].documents = db.documents;
     currentFamily = families[idx];
+  } else {
+    currentFamily.members = db.members;
+    currentFamily.documents = db.documents;
   }
 
   try {
     saveFamilies();
   } catch (e) {
-    console.error("Failed to save:", e);
-    alert("Warning: Browser storage quota exceeded! Please upload smaller files.");
+    console.error("Failed to save local:", e);
   }
 
   // Global cloud sync so all devices stay updated automatically
   if (typeof pushFamilyToCloud === "function") {
-    pushFamilyToCloud(currentFamily);
+    await pushFamilyToCloud(currentFamily);
   }
 
   // Firebase Firestore push (debounced)
@@ -213,7 +254,38 @@ async function pushFamilyToCloud(familyObj) {
 
   try {
     const allCloud = await fetchAllFamiliesFromCloud();
-    allCloud[usernameKey] = familyObj;
+    
+    // Deep copy family object
+    const payloadFam = JSON.parse(JSON.stringify(familyObj));
+    if (!payloadFam.members) payloadFam.members = [];
+    if (!payloadFam.documents) payloadFam.documents = [];
+
+    // Compress member avatars if base64
+    if (Array.isArray(payloadFam.members)) {
+      for (let m of payloadFam.members) {
+        if (m.avatar && m.avatar.length > 50000) {
+          m.avatar = await compressImageBase64(m.avatar, 300, 300, 0.5);
+        }
+      }
+    }
+
+    // Compress document scans if base64
+    if (Array.isArray(payloadFam.documents)) {
+      for (let d of payloadFam.documents) {
+        if (d.image && d.image.length > 50000) {
+          d.image = await compressImageBase64(d.image, 600, 600, 0.5);
+        }
+        if (Array.isArray(d.images)) {
+          for (let i = 0; i < d.images.length; i++) {
+            if (d.images[i] && d.images[i].length > 50000) {
+              d.images[i] = await compressImageBase64(d.images[i], 600, 600, 0.5);
+            }
+          }
+        }
+      }
+    }
+
+    allCloud[usernameKey] = payloadFam;
 
     const payload = JSON.stringify({
       description: "DigiFamily Locker Multi-Device Cloud Database",
@@ -224,7 +296,7 @@ async function pushFamilyToCloud(familyObj) {
       }
     });
 
-    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
       method: "PATCH",
       headers: {
         "Authorization": `token ${GIST_TOKEN}`,
@@ -233,7 +305,12 @@ async function pushFamilyToCloud(familyObj) {
       },
       body: payload
     });
-    console.log("[Cloud Sync] Pushed family account to cloud:", familyObj.username);
+
+    if (res.ok) {
+      console.log(`[Cloud Sync] Pushed "${familyObj.username}" to cloud Gist successfully! Members: ${payloadFam.members.length}, Docs: ${payloadFam.documents.length}`);
+    } else {
+      console.warn("[Cloud Sync] Push to cloud returned status:", res.status);
+    }
   } catch (err) {
     console.warn("[Cloud Sync] Push to cloud failed:", err.message);
   }
@@ -1203,14 +1280,13 @@ function handleFileSelect(file) {
     alert("Please select a valid image file (PNG, JPG, WEBP).");
     return;
   }
-  if (file.size > 1.5 * 1024 * 1024) {
-    alert("Image is too large! Please upload files under 1.5MB.");
-    return;
-  }
 
   const reader = new FileReader();
-  reader.onload = function(event) {
-    const base64 = event.target.result;
+  reader.onload = async function(event) {
+    const rawBase64 = event.target.result;
+    // Compress image so base64 stays compact and syncs instantly across devices
+    const base64 = await compressImageBase64(rawBase64, 800, 800, 0.6);
+
     const idx = uploadedDocImagesBase64.length;
     uploadedDocImagesBase64.push(base64);
 
