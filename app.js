@@ -2184,19 +2184,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Live Sync Cloud Vault button binding
-  const syncBtn = document.getElementById("sync-cloud-vault-btn");
-  if (syncBtn) {
-    syncBtn.addEventListener("click", async () => {
-      syncBtn.disabled = true;
-      syncBtn.textContent = "⏳ Syncing...";
-      await syncCurrentFamilyWithCloud();
-      setTimeout(() => {
-        syncBtn.disabled = false;
-        syncBtn.textContent = "🔄 Sync Cloud";
-      }, 600);
-    });
-  }
 
   // 2c. Fetch cloud database if sync is active
   const syncId = localStorage.getItem("docusaver_sync_id");
