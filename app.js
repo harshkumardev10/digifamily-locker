@@ -508,9 +508,17 @@ async function processFamilyLogin(event) {
       return;
     }
 
-    // If credentials don't match
+    // 3. Handle specific failure messages (Account Not Found vs Incorrect Password)
+    const accountExistsInCloud = !!cloudFam;
+    const accountExistsLocally = families.some(f => f.username.toLowerCase() === username);
+
     if (loader) loader.classList.add("hidden");
-    errEl.textContent = "Incorrect username or password. Please try again.";
+
+    if (!accountExistsInCloud && !accountExistsLocally) {
+      errEl.textContent = "Account does not exist. Please check your username or sign up.";
+    } else {
+      errEl.textContent = "Incorrect password. Please try again.";
+    }
     errEl.classList.remove("hidden");
 
   } catch (err) {
