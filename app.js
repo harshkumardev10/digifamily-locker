@@ -299,13 +299,21 @@ async function saveFamilyToFirestore(familyObj) {
 
   if (Array.isArray(familyObj.members)) {
     for (const m of familyObj.members) {
-      await familyDocRef.collection("members").doc(m.id).set(m, { merge: true });
+      try {
+        await saveMemberToFirestore(m);
+      } catch (err) {
+        console.warn("[Firestore Member Write Warning]", err.message);
+      }
     }
   }
 
   if (Array.isArray(familyObj.documents)) {
     for (const d of familyObj.documents) {
-      await familyDocRef.collection("documents").doc(d.id).set(d, { merge: true });
+      try {
+        await saveDocToFirestore(d);
+      } catch (err) {
+        console.warn("[Firestore Doc Write Warning]", err.message);
+      }
     }
   }
 }
@@ -313,7 +321,24 @@ async function saveFamilyToFirestore(familyObj) {
 async function saveMemberToFirestore(memberObj) {
   if (!_firestore || !currentFamily) return;
   const usernameKey = currentFamily.username.toLowerCase();
-  await _firestore.collection("families").doc(usernameKey).collection("members").doc(memberObj.id).set(memberObj, { merge: true });
+
+  const cloudMember = JSON.parse(JSON.stringify(memberObj));
+  let jsonStr = JSON.stringify(cloudMember);
+
+  if (jsonStr.length > 250000) {
+    if (cloudMember.avatar && cloudMember.avatar.startsWith("data:image/") && !cloudMember.avatar.startsWith("data:image/svg")) {
+      try {
+        cloudMember.avatar = await compressImageBase64(cloudMember.avatar, 200, 200, 0.4);
+      } catch (_) {
+        cloudMember.avatar = "";
+      }
+    }
+  }
+
+  cloudMember.accountUsername = usernameKey;
+  const memberRef = _firestore.collection("families").doc(usernameKey).collection("members").doc(cloudMember.id);
+  await memberRef.set(cloudMember, { merge: true });
+  console.log(`[Firestore Member Saved ✓] Member "${cloudMember.name}" saved to account "${usernameKey}"`);
 }
 
 async function deleteMemberFromFirestore(memberId) {
@@ -325,36 +350,97 @@ async function deleteMemberFromFirestore(memberId) {
 async function saveDocToFirestore(docObj) {
   if (!_firestore || !currentFamily) return;
   const usernameKey = currentFamily.username.toLowerCase();
-  await _firestore.collection("families").doc(usernameKey).collection("documents").doc(docObj.id).set(docObj, { merge: true });
+
+  const cloudDoc = JSON.parse(JSON.stringify(docObj));
+
+  // 1. Upload base64 image to ImgBB if key is set
+  const apiKey = getImgbbKey();
+  if (apiKey) {
+    if (cloudDoc.image && cloudDoc.image.startsWith("data:")) {
+      try {
+        const url = await uploadImageToImgbb(cloudDoc.image);
+        cloudDoc.image = url;
+        const realDoc = db.documents.find(d => d.id === docObj.id);
+        if (realDoc) realDoc.image = url;
+      } catch (err) {
+        console.warn("[ImgBB Upload Notice]", err.message);
+      }
+    }
+    if (Array.isArray(cloudDoc.images)) {
+      for (let i = 0; i < cloudDoc.images.length; i++) {
+        if (cloudDoc.images[i] && cloudDoc.images[i].startsWith("data:")) {
+          try {
+            const url = await uploadImageToImgbb(cloudDoc.images[i]);
+            cloudDoc.images[i] = url;
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  // 2. Compress or strip image payloads if total document size approaches Firestore limits
+  let jsonStr = JSON.stringify(cloudDoc);
+  if (jsonStr.length > 300000) {
+    if (cloudDoc.image && cloudDoc.image.startsWith("data:image/") && !cloudDoc.image.startsWith("data:image/svg")) {
+      try {
+        cloudDoc.image = await compressImageBase64(cloudDoc.image, 500, 500, 0.45);
+      } catch (_) { cloudDoc.image = ""; }
+    }
+    if (Array.isArray(cloudDoc.images)) {
+      for (let i = 0; i < cloudDoc.images.length; i++) {
+        if (cloudDoc.images[i] && cloudDoc.images[i].startsWith("data:image/") && !cloudDoc.images[i].startsWith("data:image/svg")) {
+          try {
+            cloudDoc.images[i] = await compressImageBase64(cloudDoc.images[i], 500, 500, 0.45);
+          } catch (_) { cloudDoc.images[i] = ""; }
+        }
+      }
+    }
+    jsonStr = JSON.stringify(cloudDoc);
+    if (jsonStr.length > 750000) {
+      cloudDoc.image = "";
+      cloudDoc.images = [];
+    }
+  }
+
+  cloudDoc.accountUsername = usernameKey;
+  const docRef = _firestore.collection("families").doc(usernameKey).collection("documents").doc(cloudDoc.id);
+  await docRef.set(cloudDoc, { merge: true });
+  console.log(`[Firestore Card Saved ✓] Document "${cloudDoc.title}" saved to account "${usernameKey}"`);
 }
 
 async function deleteDocFromFirestore(docId) {
   if (!_firestore || !currentFamily) return;
   const usernameKey = currentFamily.username.toLowerCase();
   await _firestore.collection("families").doc(usernameKey).collection("documents").doc(docId).delete();
+  console.log(`[Firestore Card Deleted ✓] Document "${docId}" removed from account "${usernameKey}"`);
 }
 
 async function fetchFamilyFromFirestore(username) {
   if (!_firestore || !username) return null;
   const usernameKey = username.toLowerCase();
-  const docSnap = await _firestore.collection("families").doc(usernameKey).get();
-  if (!docSnap.exists) return null;
+  try {
+    const docSnap = await _firestore.collection("families").doc(usernameKey).get();
+    if (!docSnap.exists) return null;
 
-  const data = docSnap.data();
+    const data = docSnap.data();
 
-  const membersSnap = await _firestore.collection("families").doc(usernameKey).collection("members").get();
-  const members = [];
-  membersSnap.forEach(doc => members.push(doc.data()));
+    const membersSnap = await _firestore.collection("families").doc(usernameKey).collection("members").get();
+    const members = [];
+    membersSnap.forEach(doc => members.push(doc.data()));
 
-  const docsSnap = await _firestore.collection("families").doc(usernameKey).collection("documents").get();
-  const documents = [];
-  docsSnap.forEach(doc => documents.push(doc.data()));
+    const docsSnap = await _firestore.collection("families").doc(usernameKey).collection("documents").get();
+    const documents = [];
+    docsSnap.forEach(doc => documents.push(doc.data()));
 
-  return {
-    ...data,
-    members: members.length > 0 ? members : (data.members || []),
-    documents: documents.length > 0 ? documents : (data.documents || [])
-  };
+    return {
+      ...data,
+      members: members.length > 0 ? members : (data.members || []),
+      documents: documents.length > 0 ? documents : (data.documents || [])
+    };
+  } catch (err) {
+    console.error("[Firestore fetchFamily Error]", err);
+    return null;
+  }
 }
 
 async function fetchAllFamiliesFromCloud() {
@@ -1342,8 +1428,8 @@ function handleFileSelect(file) {
   const reader = new FileReader();
   reader.onload = async function(event) {
     const rawBase64 = event.target.result;
-    // Compress image so base64 stays compact and syncs instantly across devices
-    const base64 = await compressImageBase64(rawBase64, 800, 800, 0.6);
+    // Compress image right away to max 500x500 so base64 payload stays tiny (~15-25KB)
+    const base64 = await compressImageBase64(rawBase64, 500, 500, 0.5);
 
     const idx = uploadedDocImagesBase64.length;
     uploadedDocImagesBase64.push(base64);
@@ -1980,14 +2066,23 @@ function hideModal(modalId) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  // 0. Bootstrap Firebase (seed defaults if needed, then connect)
+  // 0. Bootstrap Firebase (seed defaults if needed, then connect with retry loop)
   if (!getFirebaseConfig()) {
     saveFirebaseConfig(DEFAULT_FIREBASE_CONFIG);
   }
   if (!getImgbbKey()) {
     localStorage.setItem(IMGBB_KEY_STORAGE, DEFAULT_IMGBB_KEY);
   }
-  initFirebase();
+  
+  let fbRetryCount = 0;
+  function ensureFirebaseConnected() {
+    if (initFirebase()) return;
+    if (fbRetryCount < 10) {
+      fbRetryCount++;
+      setTimeout(ensureFirebaseConnected, 300);
+    }
+  }
+  ensureFirebaseConnected();
 
   // 1. Load Families
   loadFamilies();
@@ -3158,26 +3253,37 @@ function initFirebase() {
   if (!cfg || !cfg.apiKey) return false;
 
   try {
-    // Re-use existing app if already initialised with same project
-    if (_firebaseApp && _firebaseApp.options.projectId === cfg.projectId) {
-      return true;
+    if (typeof firebase === "undefined" || !firebase.apps) {
+      console.warn("[Firebase] SDK script loading...");
+      return false;
     }
 
-    // Delete old app if project changed
-    if (_firebaseApp) {
-      _firebaseApp.delete().catch(() => {});
-      _firebaseApp = null;
-      _firestore   = null;
+    if (!_firebaseApp) {
+      if (firebase.apps.length > 0) {
+        _firebaseApp = firebase.app();
+      } else {
+        _firebaseApp = firebase.initializeApp(cfg);
+      }
     }
 
-    _firebaseApp = firebase.initializeApp(cfg, cfg.projectId + "_" + Date.now());
-    _firestore   = firebase.firestore(_firebaseApp);
-    console.log("[Firebase] Connected to:", cfg.projectId);
+    if (!_firestore) {
+      _firestore = firebase.firestore(_firebaseApp);
+      try {
+        _firestore.enablePersistence({ synchronizeTabs: true }).catch(err => {
+          console.warn("[Firestore Persistence Notice]", err.code);
+        });
+      } catch (_) {}
+    }
+
+    console.log("[Firebase ✓] Connected to project:", cfg.projectId);
+
+    // Auto-start sync if user session is active but sync was pending
+    if (currentFamily && currentFamily.username && !_membersUnsub) {
+      startFirestoreSync(currentFamily.username);
+    }
     return true;
   } catch (err) {
-    console.error("[Firebase] Init error:", err);
-    _firebaseApp = null;
-    _firestore   = null;
+    console.error("[Firebase Init Error]", err);
     return false;
   }
 }
