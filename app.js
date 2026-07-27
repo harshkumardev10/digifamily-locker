@@ -182,242 +182,194 @@ async function saveDatabase() {
     console.error("Failed to save local:", e);
   }
 
-  // Global cloud sync so all devices stay updated automatically
-  if (typeof pushFamilyToCloud === "function") {
-    await pushFamilyToCloud(currentFamily);
-  }
-
-  // Firebase Firestore push (debounced)
+  // Push to Firestore cloud database
   if (typeof _firestore !== "undefined" && _firestore && currentFamily) {
-    clearTimeout(_firestoreSyncTimer);
-    _firestoreSyncTimer = setTimeout(async () => {
-      try {
-        await pushDbToFirestore();
-        console.log("[Firestore] Data synced.");
-      } catch (err) {
-        console.error("[Firestore] Push failed:", err.message);
-      }
-    }, 2000);
-  }
-}
-
-let _cloudSyncTimer = null;
-let _firestoreSyncTimer = null;
-
-// ==========================================================================
-// GLOBAL CROSS-DEVICE CLOUD SYNC
-// Storing & fetching family accounts across devices via GitHub Gist Cloud Engine
-// ==========================================================================
-
-const GIST_ID = "d741664673ab2e6fda64a53aa8ef9019";
-const GIST_TOKEN = atob("Z2hwXzE2MGUzM2hRWTlMdU1ua05PRnp2ZGdJcWwzeW5XMnN5UFhB");
-
-/**
- * Fetch all family accounts stored centrally in GitHub Gist.
- * Uses GitHub API (not CDN-cached raw URL) so every fetch always returns the freshest data,
- * ensuring real-time cross-device sync works correctly.
- */
-async function fetchAllFamiliesFromCloud() {
-  // Try 1: GitHub API — always returns fresh, non-cached data (critical for auto-sync to work)
-  try {
-    const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-      headers: {
-        "Authorization": `token ${GIST_TOKEN}`,
-        "Accept": "application/vnd.github.v3+json",
-        "Cache-Control": "no-cache"
-      }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const fileContent = data.files && data.files["accounts.json"] ? data.files["accounts.json"].content : "{}";
-      return JSON.parse(fileContent);
-    }
-  } catch (err) {
-    console.warn("[Cloud Sync] API fetch error:", err.message);
-  }
-
-  // Try 2: Raw CDN URL fallback (may be cached up to 5 min, used only if API fails)
-  try {
-    const rawRes = await fetch(`https://gist.githubusercontent.com/harshkumardev10/d741664673ab2e6fda64a53aa8ef9019/raw/accounts.json?nocache=${Date.now()}`, {
-      cache: "no-store"
-    });
-    if (rawRes.ok) {
-      const data = await rawRes.json();
-      if (data && typeof data === "object") return data;
-    }
-  } catch (e) {
-    console.warn("[Cloud Sync] Raw fetch fallback error:", e.message);
-  }
-
-  return {};
-}
-
-/**
- * Push a family account to GitHub Gist cloud database so it's accessible across all devices.
- * Bulletproof: handles SVG avatars, large base64 images, network retries, and race conditions.
- */
-async function pushFamilyToCloud(familyObj) {
-  if (!familyObj || !familyObj.username) return;
-  const usernameKey = familyObj.username.toLowerCase();
-
-  // Deep copy so we never mutate the in-memory object
-  const payloadFam = JSON.parse(JSON.stringify(familyObj));
-  if (!payloadFam.members) payloadFam.members = [];
-  if (!payloadFam.documents) payloadFam.documents = [];
-
-  // Strip/compress member avatars that are large JPEG/PNG base64 (NOT SVG — canvas can't handle SVG)
-  if (Array.isArray(payloadFam.members)) {
-    for (let m of payloadFam.members) {
-      if (m.avatar && m.avatar.startsWith("data:image/") && !m.avatar.startsWith("data:image/svg") && m.avatar.length > 50000) {
-        try {
-          m.avatar = await compressImageBase64(m.avatar, 200, 200, 0.5);
-        } catch (_) {
-          m.avatar = ""; // strip if compression fails rather than blocking push
-        }
-      } else if (m.avatar && m.avatar.length > 300000) {
-        m.avatar = ""; // strip extremely large avatars regardless of type
-      }
-    }
-  }
-
-  // Strip/compress document images that are large base64 blobs
-  if (Array.isArray(payloadFam.documents)) {
-    for (let d of payloadFam.documents) {
-      if (d.image && d.image.startsWith("data:image/") && !d.image.startsWith("data:image/svg") && d.image.length > 50000) {
-        try { d.image = await compressImageBase64(d.image, 600, 600, 0.55); } catch (_) { d.image = ""; }
-      }
-      if (Array.isArray(d.images)) {
-        for (let i = 0; i < d.images.length; i++) {
-          if (d.images[i] && d.images[i].startsWith("data:image/") && !d.images[i].startsWith("data:image/svg") && d.images[i].length > 50000) {
-            try { d.images[i] = await compressImageBase64(d.images[i], 600, 600, 0.55); } catch (_) { d.images[i] = ""; }
-          }
-        }
-      }
-    }
-  }
-
-  // Read current cloud DB, upsert this family, then write back
-  // Retry up to 3 times on failure
-  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const allCloud = await fetchAllFamiliesFromCloud();
-      allCloud[usernameKey] = payloadFam;
-
-      const bodyStr = JSON.stringify({
-        description: "DigiFamily Locker — Multi-Device Cloud Database",
-        files: {
-          "accounts.json": {
-            content: JSON.stringify(allCloud, null, 2)
-          }
-        }
-      });
-
-      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: "PATCH",
-        headers: {
-          "Authorization": `token ${GIST_TOKEN}`,
-          "Content-Type": "application/json",
-          "Accept": "application/vnd.github.v3+json"
-        },
-        body: bodyStr
-      });
-
-      if (res.ok) {
-        console.log(`[Cloud Sync ✓] Pushed "${familyObj.username}" — ${payloadFam.members.length} members, ${payloadFam.documents.length} docs`);
-        return; // success — done
-      } else {
-        const errBody = await res.text().catch(() => "");
-        console.warn(`[Cloud Sync] Push attempt ${attempt} failed — HTTP ${res.status}:`, errBody);
-      }
+      await saveFamilyToFirestore(currentFamily);
     } catch (err) {
-      console.warn(`[Cloud Sync] Push attempt ${attempt} error:`, err.message);
+      console.error("[Firestore] Sync failed:", err.message);
     }
-
-    // Wait before retrying (exponential backoff: 500ms, 1500ms)
-    if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 500));
   }
+}
 
-  console.error("[Cloud Sync ✗] All push attempts failed for:", familyObj.username);
+// ==========================================================================
+// REAL-TIME FIRESTORE CLOUD DATABASE ENGINE
+// Multi-Device Instant Synchronization & Account-Based Cloud Storage
+// ==========================================================================
+
+let _membersUnsub = null;
+let _docsUnsub = null;
+let _familyUnsub = null;
+
+function stopFirestoreSync() {
+  if (_membersUnsub) { _membersUnsub(); _membersUnsub = null; }
+  if (_docsUnsub) { _docsUnsub(); _docsUnsub = null; }
+  if (_familyUnsub) { _familyUnsub(); _familyUnsub = null; }
 }
 
 /**
- * Fetch a family account by username from GitHub Gist cloud database.
+ * Subscribe to real-time Firestore collection snapshots for the logged-in family.
+ * Any card or member created/edited/deleted on ANY device instantly updates all connected devices!
  */
-async function fetchFamilyFromCloud(username) {
-  if (!username) return null;
+function startFirestoreSync(username) {
+  stopFirestoreSync();
+  if (!_firestore || !username) return;
+
   const usernameKey = username.toLowerCase();
-  try {
-    const allCloud = await fetchAllFamiliesFromCloud();
-    if (allCloud && allCloud[usernameKey]) {
-      console.log("[Cloud Sync] Found account in cloud for username:", usernameKey);
-      return allCloud[usernameKey];
-    }
-  } catch (err) {
-    console.warn("[Cloud Sync] Fetch single failed:", err.message);
-  }
-  return null;
-}
+  const familyDocRef = _firestore.collection("families").doc(usernameKey);
 
-let _cloudAutoSyncInterval = null;
-
-/**
- * Periodically sync current family data from cloud database (every 3 seconds)
- * so member cards and document cards created on Device A instantly appear on Device B & C!
- */
-async function syncCurrentFamilyWithCloud() {
-  if (!currentFamily || !currentFamily.username) return;
-
-  try {
-    const cloudFam = await fetchFamilyFromCloud(currentFamily.username);
-    if (!cloudFam) return;
-
-    const cloudMembers = Array.isArray(cloudFam.members) ? cloudFam.members : [];
-    const cloudDocs    = Array.isArray(cloudFam.documents) ? cloudFam.documents : [];
-
-    const hasMemberChanges = JSON.stringify(cloudMembers) !== JSON.stringify(db.members);
-    const hasDocChanges    = JSON.stringify(cloudDocs)    !== JSON.stringify(db.documents);
-
-    if (hasMemberChanges || hasDocChanges) {
-      console.log("[Auto-Sync] Live updates detected from another device!");
-      cloudFam.members   = cloudMembers;
-      cloudFam.documents = cloudDocs;
-
-      const idx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === cloudFam.username.toLowerCase());
-      if (idx !== -1) families[idx] = cloudFam;
-      else families.push(cloudFam);
-
-      currentFamily = cloudFam;
-      initDatabase();
-      saveFamilies();
-
-      renderMembers();
-      if (currentMember) {
-        const updatedM = db.members.find(m => m.id === currentMember.id);
-        if (updatedM) {
-          currentMember = updatedM;
-          renderDocuments();
-        }
+  // 1. Real-Time Listener: Family account document
+  _familyUnsub = familyDocRef.onSnapshot((docSnap) => {
+    if (docSnap.exists) {
+      const data = docSnap.data();
+      if (currentFamily) {
+        currentFamily.familyName = data.familyName || currentFamily.familyName;
+        currentFamily.phone = data.phone || currentFamily.phone;
+        currentFamily.password = data.password || currentFamily.password;
+        saveFamilies();
+        updateDrawerUI();
       }
     }
-  } catch (err) {
-    console.warn("[Auto-Sync Error]", err.message);
+  }, (err) => console.warn("[Firestore Family Sub Error]", err));
+
+  // 2. Real-Time Listener: Family Members subcollection
+  _membersUnsub = familyDocRef.collection("members").onSnapshot((querySnap) => {
+    const membersList = [];
+    querySnap.forEach(doc => {
+      membersList.push(doc.data());
+    });
+
+    db.members = membersList;
+    if (currentFamily) {
+      currentFamily.members = membersList;
+      saveFamilies();
+    }
+    renderMembers();
+
+    if (currentMember) {
+      const updatedM = db.members.find(m => m.id === currentMember.id);
+      if (updatedM) {
+        currentMember = updatedM;
+        const headAvatar = document.getElementById("header-avatar");
+        const headUser = document.getElementById("header-username");
+        if (headAvatar) headAvatar.src = getMemberAvatarUrl(currentMember);
+        if (headUser) headUser.textContent = currentMember.name;
+      }
+    }
+  }, (err) => console.warn("[Firestore Members Sub Error]", err));
+
+  // 3. Real-Time Listener: Document Cards subcollection
+  _docsUnsub = familyDocRef.collection("documents").onSnapshot((querySnap) => {
+    const docsList = [];
+    querySnap.forEach(doc => {
+      docsList.push(doc.data());
+    });
+
+    db.documents = docsList;
+    if (currentFamily) {
+      currentFamily.documents = docsList;
+      saveFamilies();
+    }
+
+    renderMembers(); // Update doc count badges on home view
+    if (currentMember) {
+      renderDocuments(); // Update card grid on dashboard view
+    }
+  }, (err) => console.warn("[Firestore Docs Sub Error]", err));
+
+  console.log(`[Firestore Real-Time Sync Active] Subscribed to account "${usernameKey}"`);
+}
+
+// ── Firestore Database Operations ──────────────────────────────────────────
+
+async function saveFamilyToFirestore(familyObj) {
+  if (!_firestore || !familyObj || !familyObj.username) return;
+  const usernameKey = familyObj.username.toLowerCase();
+  const familyDocRef = _firestore.collection("families").doc(usernameKey);
+
+  await familyDocRef.set({
+    id: familyObj.id,
+    familyName: familyObj.familyName,
+    username: usernameKey,
+    phone: familyObj.phone || "",
+    password: familyObj.password,
+    createdAt: familyObj.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+
+  if (Array.isArray(familyObj.members)) {
+    for (const m of familyObj.members) {
+      await familyDocRef.collection("members").doc(m.id).set(m, { merge: true });
+    }
+  }
+
+  if (Array.isArray(familyObj.documents)) {
+    for (const d of familyObj.documents) {
+      await familyDocRef.collection("documents").doc(d.id).set(d, { merge: true });
+    }
   }
 }
 
-function startCloudAutoSync() {
-  if (_cloudAutoSyncInterval) clearInterval(_cloudAutoSyncInterval);
+async function saveMemberToFirestore(memberObj) {
+  if (!_firestore || !currentFamily) return;
+  const usernameKey = currentFamily.username.toLowerCase();
+  await _firestore.collection("families").doc(usernameKey).collection("members").doc(memberObj.id).set(memberObj, { merge: true });
+}
 
-  // Fire immediately so Device B/C sees Device A's data right away
-  syncCurrentFamilyWithCloud();
+async function deleteMemberFromFirestore(memberId) {
+  if (!_firestore || !currentFamily) return;
+  const usernameKey = currentFamily.username.toLowerCase();
+  await _firestore.collection("families").doc(usernameKey).collection("members").doc(memberId).delete();
+}
 
-  // Poll continuously every 3 seconds across all devices
-  _cloudAutoSyncInterval = setInterval(syncCurrentFamilyWithCloud, 3000);
+async function saveDocToFirestore(docObj) {
+  if (!_firestore || !currentFamily) return;
+  const usernameKey = currentFamily.username.toLowerCase();
+  await _firestore.collection("families").doc(usernameKey).collection("documents").doc(docObj.id).set(docObj, { merge: true });
+}
 
-  // Also sync instantly whenever the user switches back to this tab/app on any device
-  window.addEventListener("focus", syncCurrentFamilyWithCloud);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") syncCurrentFamilyWithCloud();
-  });
+async function deleteDocFromFirestore(docId) {
+  if (!_firestore || !currentFamily) return;
+  const usernameKey = currentFamily.username.toLowerCase();
+  await _firestore.collection("families").doc(usernameKey).collection("documents").doc(docId).delete();
+}
+
+async function fetchFamilyFromFirestore(username) {
+  if (!_firestore || !username) return null;
+  const usernameKey = username.toLowerCase();
+  const docSnap = await _firestore.collection("families").doc(usernameKey).get();
+  if (!docSnap.exists) return null;
+
+  const data = docSnap.data();
+
+  const membersSnap = await _firestore.collection("families").doc(usernameKey).collection("members").get();
+  const members = [];
+  membersSnap.forEach(doc => members.push(doc.data()));
+
+  const docsSnap = await _firestore.collection("families").doc(usernameKey).collection("documents").get();
+  const documents = [];
+  docsSnap.forEach(doc => documents.push(doc.data()));
+
+  return {
+    ...data,
+    members: members.length > 0 ? members : (data.members || []),
+    documents: documents.length > 0 ? documents : (data.documents || [])
+  };
+}
+
+async function fetchAllFamiliesFromCloud() {
+  if (!_firestore) return {};
+  try {
+    const querySnap = await _firestore.collection("families").get();
+    const result = {};
+    querySnap.forEach(doc => {
+      result[doc.id] = doc.data();
+    });
+    return result;
+  } catch (err) {
+    console.warn("[Firestore fetchAll Error]", err);
+    return {};
+  }
 }
 
 /**
@@ -568,8 +520,10 @@ function showFamilyHome() {
   renderMembers();
   updateDrawerUI();
 
-  // Start live auto-sync for multi-device sync
-  startCloudAutoSync();
+  // Start real-time Firestore sync for multi-device instant synchronization
+  if (currentFamily && currentFamily.username) {
+    startFirestoreSync(currentFamily.username);
+  }
 }
 
 // Process family signup (create account)
@@ -611,7 +565,7 @@ async function processFamilySignup(event) {
   }
 
   try {
-    const cloudCheck = await fetchFamilyFromCloud(username);
+    const cloudCheck = await fetchFamilyFromFirestore(username);
     if (cloudCheck) {
       if (loader) loader.classList.add("hidden");
       errEl.textContent = "Username already taken. Please choose another.";
@@ -638,7 +592,7 @@ async function processFamilySignup(event) {
     saveFamilies();
 
     // Await cloud sync so the account is immediately active for all devices
-    await pushFamilyToCloud(newFamily);
+    await saveFamilyToFirestore(newFamily);
 
     if (loader) loader.classList.add("hidden");
 
@@ -646,6 +600,7 @@ async function processFamilySignup(event) {
     currentFamily = newFamily;
     initDatabase();
     localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+    startFirestoreSync(currentFamily.username);
     
     currentMember = null;
     showFamilyHome();
@@ -676,7 +631,7 @@ async function processFamilyLogin(event) {
 
   try {
     // 1. Always fetch from cloud database first for cross-device authentication
-    const cloudFam = await fetchFamilyFromCloud(username);
+    const cloudFam = await fetchFamilyFromFirestore(username);
 
     if (cloudFam && cloudFam.password === password) {
       if (loader) loader.classList.add("hidden");
@@ -692,8 +647,9 @@ async function processFamilyLogin(event) {
       currentFamily = cloudFam;
       initDatabase();
       localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+      startFirestoreSync(currentFamily.username);
 
-      showLoader("Opening Vault", "Connecting to vault...", 600, () => {
+      showLoader("Opening Vault", "Connecting to vault...", 500, () => {
         if (db.members && db.members.length === 1) {
           currentMember = db.members[0];
           enterDashboard();
@@ -714,8 +670,9 @@ async function processFamilyLogin(event) {
       currentFamily = localFam;
       initDatabase();
       localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+      startFirestoreSync(currentFamily.username);
 
-      showLoader("Opening Vault", "Connecting to vault...", 600, () => {
+      showLoader("Opening Vault", "Connecting to vault...", 500, () => {
         if (db.members && db.members.length === 1) {
           currentMember = db.members[0];
           enterDashboard();
@@ -749,9 +706,10 @@ async function processFamilyLogin(event) {
 
 // Process family logout (go back to landing)
 function processFamilyLogout() {
+  stopFirestoreSync();
   localStorage.removeItem(CURRENT_FAMILY_KEY);
   localStorage.removeItem(CURRENT_MEMBER_KEY);
-  showLoader("Locking Vault", "Closing all secure connections...", 800, () => {
+  showLoader("Locking Vault", "Closing all secure connections...", 600, () => {
     showLanding();
   });
 }
@@ -958,6 +916,7 @@ function renderDocuments() {
         if (confirm(`Are you sure you want to delete ${doc.title}? This cannot be undone.`)) {
           db.documents = db.documents.filter(d => d.id !== doc.id);
           saveDatabase();
+          deleteDocFromFirestore(doc.id).catch(err => console.error("[Firestore DeleteDoc Error]", err));
           renderDocuments();
         }
       });
@@ -1158,6 +1117,7 @@ function processRegistration(event) {
 
   db.members.push(newMember);
   saveDatabase();
+  saveMemberToFirestore(newMember).catch(err => console.error("[Firestore Member Save Error]", err));
 
   // Reset custom avatar details
   uploadedCustomAvatarBase64 = null;
@@ -1215,6 +1175,7 @@ function processDocSubmit(event) {
     category = "education";
   }
 
+  let targetDoc = null;
   if (editId) {
     // EDIT MODE
     const docIndex = db.documents.findIndex(d => d.id === editId);
@@ -1229,10 +1190,12 @@ function processDocSubmit(event) {
         db.documents[docIndex].images = uploadedDocImagesBase64;
         db.documents[docIndex].image = uploadedDocImagesBase64[0]; // keep backward compat
       }
+      db.documents[docIndex].updatedAt = new Date().toISOString();
+      targetDoc = db.documents[docIndex];
     }
   } else {
     // CREATE MODE
-    const newDoc = {
+    targetDoc = {
       id: "d-" + Date.now(),
       memberId: currentMember.id,
       type,
@@ -1241,13 +1204,18 @@ function processDocSubmit(event) {
       nameOnDoc,
       category,
       images: uploadedDocImagesBase64,
-      image: uploadedDocImagesBase64[0] || null // first image for backward compat
+      image: uploadedDocImagesBase64[0] || null, // first image for backward compat
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-    db.documents.push(newDoc);
+    db.documents.push(targetDoc);
   }
   saveDatabase();
+  if (targetDoc) {
+    saveDocToFirestore(targetDoc).catch(err => console.error("[Firestore SaveDoc Error]", err));
+  }
   hideModal("doc-modal");
-  showLoader("Saving Document", "Encrypting document locally...", 1000, () => {
+  showLoader("Saving Document", "Encrypting and syncing document...", 600, () => {
     renderDocuments();
   });
 }
@@ -1288,6 +1256,7 @@ function openViewDocModal(docId) {
     if (confirm(`Are you sure you want to delete ${doc.title}? This cannot be undone.`)) {
       db.documents = db.documents.filter(d => d.id !== doc.id);
       saveDatabase();
+      deleteDocFromFirestore(doc.id).catch(err => console.error("[Firestore DeleteDoc Error]", err));
       hideModal("view-doc-modal");
       renderDocuments();
     }
@@ -2032,35 +2001,8 @@ document.addEventListener("DOMContentLoaded", () => {
       initDatabase();
       showFamilyHome();
 
-      // Pull latest data from GitHub Gist cloud (non-blocking — re-render when data arrives)
-      fetchFamilyFromCloud(fam.username).then(cloudFam => {
-        if (cloudFam) {
-          // Smart merge: preserve local members & docs if cloud fetch has empty arrays
-          const cloudMembers = (cloudFam.members && cloudFam.members.length > 0) ? cloudFam.members : (fam.members || []);
-          const cloudDocs    = (cloudFam.documents && cloudFam.documents.length > 0) ? cloudFam.documents : (fam.documents || []);
-
-          cloudFam.members   = cloudMembers;
-          cloudFam.documents = cloudDocs;
-
-          const idx = families.findIndex(f => f.id === cloudFam.id || f.username.toLowerCase() === fam.username.toLowerCase());
-          if (idx !== -1) families[idx] = cloudFam;
-          else families.push(cloudFam);
-
-          currentFamily = cloudFam;
-          initDatabase();
-          saveFamilies();
-          console.log("[Cloud Sync] Session restored with latest cloud data for:", fam.username);
-          
-          renderMembers();
-          if (currentMember) {
-            const updatedM = db.members.find(m => m.id === currentMember.id);
-            if (updatedM) {
-              currentMember = updatedM;
-              renderDocuments();
-            }
-          }
-        }
-      }).catch(err => console.warn("[Cloud Sync] Session pull failed:", err.message));
+      // Start real-time Firestore sync for multi-device instant synchronization
+      startFirestoreSync(fam.username);
 
       const savedMemberId = localStorage.getItem(CURRENT_MEMBER_KEY);
       if (savedMemberId) {
