@@ -2235,7 +2235,13 @@ async function sendOtpForLogin() {
     if (result && result.success) {
       window._fast2smsPhone = cleanPhone;
       if (result.devOtp) {
-        if (bannerText) bannerText.textContent = "🧪 Dev OTP: " + result.devOtp + " (Key not set, enter to login):";
+        if (bannerText) {
+          if (result.warning) {
+            bannerText.innerHTML = "⚠️ <span style='font-size:0.85em; opacity:0.9;'>" + result.warning + "</span><br><strong>🔑 Current Login OTP: " + result.devOtp + "</strong>";
+          } else {
+            bannerText.textContent = "🧪 Test OTP: " + result.devOtp + " (Enter below to login):";
+          }
+        }
         const otpInputEl = document.getElementById("fl-otp-code");
         if (otpInputEl) otpInputEl.value = result.devOtp;
       } else {

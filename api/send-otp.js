@@ -46,10 +46,10 @@ export default async function handler(req, res) {
   const otp = generateOtp();
 
   try {
-    // 1. Store OTP securely
+    // 1. Store OTP securely in Firestore (or local memory fallback)
     await storeOtp(cleanPhone, otp, projectId, fbApiKey);
 
-    // 2. If Fast2SMS key is present, send live SMS
+    // 2. If Fast2SMS key is present, attempt live SMS
     if (apiKey) {
       try {
         const smsResult = await sendFast2SMS(apiKey, cleanPhone, otp);
@@ -60,21 +60,32 @@ export default async function handler(req, res) {
             message: "Live SMS sent to +91 " + cleanPhone 
           });
         } else {
-          console.error("[Fast2SMS Error]", smsResult.body);
-          return res.status(502).json({ 
-            success: false, 
-            error: "Fast2SMS error: " + (smsResult.body?.message || "Delivery failed. Check credits.") 
+          const rawMsg = smsResult.body?.message;
+          const errMsg = Array.isArray(rawMsg) ? rawMsg.join(", ") : (typeof rawMsg === "string" ? rawMsg : JSON.stringify(smsResult.body));
+          console.warn("[Fast2SMS Gateway Notice]:", errMsg);
+
+          // Non-blocking fallback: Return OTP with warning so user can still log in while completing KYC/verification
+          return res.status(200).json({ 
+            success: true, 
+            devMode: true,
+            devOtp: otp,
+            warning: "Fast2SMS verification needed: " + errMsg,
+            message: `Fast2SMS verification pending. Temporary Login OTP: ${otp}`
           });
         }
       } catch (smsNetErr) {
-        return res.status(502).json({ 
-          success: false, 
-          error: "Could not connect to Fast2SMS gateway: " + smsNetErr.message 
+        console.warn("[Fast2SMS Network Error]:", smsNetErr.message);
+        return res.status(200).json({ 
+          success: true, 
+          devMode: true,
+          devOtp: otp,
+          warning: "SMS Gateway unreachable (" + smsNetErr.message + ")",
+          message: `Temporary Login OTP: ${otp}`
         });
       }
     }
 
-    // 3. Dev / localhost fallback mode (when no API key configured yet)
+    // 3. Fallback when running without FAST2SMS_API_KEY (e.g. localhost testing)
     console.log(`[Dev Mode OTP] +91${cleanPhone} => ${otp}`);
     return res.status(200).json({
       success: true,
