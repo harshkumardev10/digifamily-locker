@@ -2216,7 +2216,7 @@ async function sendOtpForLogin() {
   const otpInputEl = document.getElementById("fl-otp-code");
   if (otpInputEl) { otpInputEl.value = ""; otpInputEl.focus(); }
 
-  // 3. Account exists! Send OTP via Fast2SMS (free live SMS)
+  // 3. Account exists! Send OTP via Fast2SMS (live SMS / dev fallback)
   if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Sending SMS..."; }
   try {
     const resp = await fetch("/api/send-otp", {
@@ -2224,19 +2224,31 @@ async function sendOtpForLogin() {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ phone: cleanPhone })
     });
-    const result = await resp.json();
+    
+    let result = null;
+    try {
+      result = await resp.json();
+    } catch (_) {
+      throw new Error("Server returned non-JSON response (Status " + resp.status + ")");
+    }
 
-    if (result.success) {
+    if (result && result.success) {
       window._fast2smsPhone = cleanPhone;
-      if (bannerText) bannerText.textContent = "✅ OTP sent to +91 " + cleanPhone + ". Enter the 6-digit code:";
-      console.log("[SMS ✓] OTP dispatched via Fast2SMS to +91" + cleanPhone);
+      if (result.devOtp) {
+        if (bannerText) bannerText.textContent = "🧪 Dev OTP: " + result.devOtp + " (Key not set, enter to login):";
+        const otpInputEl = document.getElementById("fl-otp-code");
+        if (otpInputEl) otpInputEl.value = result.devOtp;
+      } else {
+        if (bannerText) bannerText.textContent = "✅ Live SMS sent to +91 " + cleanPhone + ". Enter 6-digit code:";
+      }
+      console.log("[SMS ✓] OTP dispatched:", result);
     } else {
-      errorEl.textContent = "❌ " + (result.error || "Could not send OTP. Try again.");
+      errorEl.textContent = "❌ " + (result?.error || "Could not send OTP. Try again.");
       errorEl.classList.remove("hidden");
     }
   } catch (smsErr) {
     console.warn("[SMS Error]", smsErr);
-    errorEl.textContent = "❌ Could not reach SMS service. Check internet connection.";
+    errorEl.textContent = "❌ " + (smsErr.message || "Could not reach SMS service. Check connection.");
     errorEl.classList.remove("hidden");
   } finally {
     if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "Get OTP"; }
@@ -2270,12 +2282,17 @@ async function verifyOtpForLogin(event) {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ phone, otp: enteredOtp })
     });
-    const result = await resp.json();
+    let result = null;
+    try {
+      result = await resp.json();
+    } catch (_) {
+      throw new Error("Server error verifying OTP (Status " + resp.status + ")");
+    }
 
-    if (!result.success) {
+    if (!result || !result.success) {
       const loader2 = document.getElementById("app-loader");
       if (loader2) loader2.classList.add("hidden");
-      errorEl.textContent = "❌ " + (result.error || "Invalid OTP. Please try again.");
+      errorEl.textContent = "❌ " + (result?.error || "Invalid OTP. Please try again.");
       errorEl.classList.remove("hidden");
       return;
     }
