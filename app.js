@@ -9,6 +9,13 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // INITIALIZATION & STATE MANAGEMENT
 // ==========================================================================
 
+// ── Cloudinary Configuration (Live Document & Photo Hosting) ──────────────────
+const CLOUDINARY_CONFIG = {
+  cloudName:    "",            // Enter your Cloud Name from Cloudinary Dashboard
+  uploadPreset: "ml_default"   // Enter your unsigned Upload Preset
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Multi-family storage keys
 const FAMILIES_STORAGE_KEY = "docusaver_families";
 const CURRENT_FAMILY_KEY   = "docusaver_current_family_id";
@@ -33,6 +40,45 @@ const AVATARS = {
   avatar4: `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgZmlsbD0nI0YzRTVGNScvPjxjaXJjbGUgY3g9JzUwJyBjeT0nNDAnIHI9JzIwJyBmaWxsPScjOEUyNEFBJy8+PHBhdGggZD0nTTIwIDg1IEMyMCA2NSwgODAgNjUsIDgwIDg1JyBmaWxsPScjOEUyNEFBJy8+PC9zdmc+`,
   avatar5: `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48cmVjdCB3aWR0aD0nMTAwJyBoZWlnaHQ9JzEwMCcgZmlsbD0nI0ZDRTRFQycvPjxjaXJjbGUgY3g9JzUwJyBjeT0nNDAnIHI9JzIwJyBmaWxsPScjRDgxQjYwJy8+PHBhdGggZD0nTTIwIDg1IEMyMCA2NSwgODAgNjUsIDgwIDg1JyBmaWxsPScjRDgxQjYwJy8+PC9zdmc+`
 };
+
+// ==========================================================================
+// CLOUDINARY CONFIGURATION (Live Photo & Document Hosting)
+// ==========================================================================
+// Steps to connect your own free Cloudinary account:
+
+async function uploadImageToCloudinary(base64DataUrl) {
+  if (!base64DataUrl || !base64DataUrl.startsWith("data:")) return base64DataUrl;
+
+  const cfg = CLOUDINARY_CONFIG;
+  if (!cfg.cloudName) {
+    // If Cloudinary not yet configured, compress base64 so document still saves to Firestore
+    return await compressImageBase64(base64DataUrl, 600, 600, 0.5);
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("file", base64DataUrl);
+    formData.append("upload_preset", cfg.uploadPreset || "ml_default");
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
+      method: "POST",
+      body: formData
+    });
+
+    if (!res.ok) {
+      console.warn("[Cloudinary Upload Warning]", res.status);
+      return await compressImageBase64(base64DataUrl, 600, 600, 0.5);
+    }
+
+    const json = await res.json();
+    console.log("[Cloudinary Live URL ✓]", json.secure_url);
+    return json.secure_url;
+  } catch (err) {
+    console.warn("[Cloudinary Error]", err);
+    return await compressImageBase64(base64DataUrl, 600, 600, 0.5);
+  }
+}
+
 
 const SEED_MEMBERS = [];
 
@@ -127,21 +173,14 @@ function showLoader(title, status, durationMs, callback) {
 
 // Load all families from localStorage
 function loadFamilies() {
-  const stored = localStorage.getItem(FAMILIES_STORAGE_KEY);
-  if (stored) {
-    try {
-      families = JSON.parse(stored);
-    } catch (e) {
-      families = [];
-    }
-  } else {
-    families = [];
-  }
+  localStorage.removeItem(FAMILIES_STORAGE_KEY);
+  families = [];
 }
 
 // Save all families to localStorage
 function saveFamilies() {
-  localStorage.setItem(FAMILIES_STORAGE_KEY, JSON.stringify(families));
+  // Cloud is source of truth — no accounts stored in localStorage
+  localStorage.removeItem(FAMILIES_STORAGE_KEY);
 }
 
 // Initialize db from currentFamily's data
@@ -325,14 +364,15 @@ async function saveMemberToFirestore(memberObj) {
   const cloudMember = JSON.parse(JSON.stringify(memberObj));
   let jsonStr = JSON.stringify(cloudMember);
 
-  if (jsonStr.length > 250000) {
-    if (cloudMember.avatar && cloudMember.avatar.startsWith("data:image/") && !cloudMember.avatar.startsWith("data:image/svg")) {
-      try {
-        cloudMember.avatar = await compressImageBase64(cloudMember.avatar, 200, 200, 0.4);
-      } catch (_) {
-        cloudMember.avatar = "";
+  if (cloudMember.avatar && cloudMember.avatar.startsWith("data:image/") && !cloudMember.avatar.startsWith("data:image/svg")) {
+    try {
+      const liveAvatarUrl = await uploadImageToCloudinary(cloudMember.avatar);
+      if (liveAvatarUrl) {
+        cloudMember.avatar = liveAvatarUrl;
+        const realM = db.members.find(m => m.id === memberObj.id);
+        if (realM) realM.avatar = liveAvatarUrl;
       }
-    }
+    } catch (_) {}
   }
 
   cloudMember.accountUsername = usernameKey;
@@ -347,33 +387,61 @@ async function deleteMemberFromFirestore(memberId) {
   await _firestore.collection("families").doc(usernameKey).collection("members").doc(memberId).delete();
 }
 
+// Unified cloud image uploader (tries Cloudinary first, then ImgBB fallback)
+async function uploadImageToHosting(base64DataUrl) {
+  if (!base64DataUrl || !base64DataUrl.startsWith("data:")) return base64DataUrl;
+
+  // 1. Try Cloudinary if configured
+  try {
+    const cldCfg = typeof getCloudinaryConfig === "function" ? getCloudinaryConfig() : null;
+    if (cldCfg && cldCfg.cloudName && cldCfg.uploadPreset) {
+      const url = await uploadImageToCloudinary(base64DataUrl);
+      if (url) return url;
+    }
+  } catch (cldErr) {
+    console.warn("[Cloudinary Upload Warning]", cldErr.message);
+  }
+
+  // 2. Try ImgBB if key is set
+  try {
+    const apiKey = typeof getImgbbKey === "function" ? getImgbbKey() : "";
+    if (apiKey) {
+      const url = await uploadImageToImgbb(base64DataUrl);
+      if (url) return url;
+    }
+  } catch (imgErr) {
+    console.warn("[ImgBB Upload Warning]", imgErr.message);
+  }
+
+  return null;
+}
+
 async function saveDocToFirestore(docObj) {
   if (!_firestore || !currentFamily) return;
   const usernameKey = currentFamily.username.toLowerCase();
 
   const cloudDoc = JSON.parse(JSON.stringify(docObj));
 
-  // 1. Upload base64 image to ImgBB if key is set
-  const apiKey = getImgbbKey();
-  if (apiKey) {
-    if (cloudDoc.image && cloudDoc.image.startsWith("data:")) {
-      try {
-        const url = await uploadImageToImgbb(cloudDoc.image);
+  // 1. Upload base64 image to Cloudinary (or fallback to ImgBB)
+  if (cloudDoc.image && cloudDoc.image.startsWith("data:")) {
+    try {
+      const url = await uploadImageToHosting(cloudDoc.image);
+      if (url) {
         cloudDoc.image = url;
         const realDoc = db.documents.find(d => d.id === docObj.id);
         if (realDoc) realDoc.image = url;
-      } catch (err) {
-        console.warn("[ImgBB Upload Notice]", err.message);
       }
+    } catch (err) {
+      console.warn("[Image Upload Notice]", err.message);
     }
-    if (Array.isArray(cloudDoc.images)) {
-      for (let i = 0; i < cloudDoc.images.length; i++) {
-        if (cloudDoc.images[i] && cloudDoc.images[i].startsWith("data:")) {
-          try {
-            const url = await uploadImageToImgbb(cloudDoc.images[i]);
-            cloudDoc.images[i] = url;
-          } catch (_) {}
-        }
+  }
+  if (Array.isArray(cloudDoc.images)) {
+    for (let i = 0; i < cloudDoc.images.length; i++) {
+      if (cloudDoc.images[i] && cloudDoc.images[i].startsWith("data:")) {
+        try {
+          const url = await uploadImageToHosting(cloudDoc.images[i]);
+          if (url) cloudDoc.images[i] = url;
+        } catch (_) {}
       }
     }
   }
@@ -455,54 +523,6 @@ async function fetchAllFamiliesFromCloud() {
   } catch (err) {
     console.warn("[Firestore fetchAll Error]", err);
     return {};
-  }
-}
-
-/**
- * Render live accounts directory table modal
- */
-async function renderAccountsDirectory() {
-  const loading = document.getElementById("accounts-dir-loading");
-  const content = document.getElementById("accounts-dir-content");
-  const tbody   = document.getElementById("accounts-table-body");
-
-  if (loading) loading.classList.remove("hidden");
-  if (content) content.classList.add("hidden");
-
-  try {
-    const allAccounts = await fetchAllFamiliesFromCloud();
-    const list = Object.values(allAccounts || {});
-
-    if (tbody) tbody.innerHTML = "";
-
-    if (list.length === 0) {
-      if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 24px; color: var(--text-muted);">No registered accounts found in cloud database.</td></tr>`;
-      }
-    } else {
-      list.forEach(acc => {
-        const tr = document.createElement("tr");
-        const memberCount = (acc.members && acc.members.length) || 0;
-        const dateStr = acc.createdAt ? new Date(acc.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "N/A";
-        const phoneStr = acc.phone || "N/A";
-
-        tr.innerHTML = `
-          <td><strong>${acc.familyName || "N/A"}</strong></td>
-          <td><code>${acc.username || "N/A"}</code></td>
-          <td><span class="badge-phone">📱 ${phoneStr}</span></td>
-          <td><span class="badge-pass">🔑 ${acc.password || "N/A"}</span></td>
-          <td>👥 ${memberCount} member(s)</td>
-          <td style="color: var(--text-muted); font-size: 0.8rem;">${dateStr}</td>
-        `;
-        if (tbody) tbody.appendChild(tr);
-      });
-    }
-
-    if (loading) loading.classList.add("hidden");
-    if (content) content.classList.remove("hidden");
-  } catch (err) {
-    if (loading) loading.textContent = "❌ Failed to load accounts directory. Please try again.";
-    console.error("[Accounts Directory]", err);
   }
 }
 
@@ -634,8 +654,30 @@ async function processFamilySignup(event) {
     return;
   }
 
+  const phoneEl = document.getElementById("fs-phone");
+  const phone   = phoneEl ? phoneEl.value.trim() : "";
+  const cleanPhone = phone.replace(/\D/g, "");
+
+  if (cleanPhone.length < 10) {
+    errEl.textContent = "Please enter a valid 10-digit mobile number.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
   // Check locally first
   const localTaken = families.some(f => f.username.toLowerCase() === username);
+  if (localTaken) {
+    errEl.textContent = "Username already taken. Please choose another.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  const phoneTaken = families.some(f => f.phone && f.phone.replace(/\D/g, "").endsWith(cleanPhone.slice(-10)));
+  if (phoneTaken) {
+    errEl.textContent = "This mobile number is already registered to an account.";
+    errEl.classList.remove("hidden");
+    return;
+  }
   if (localTaken) {
     errEl.textContent = "Username already taken. Please choose another.";
     errEl.classList.remove("hidden");
@@ -678,22 +720,45 @@ async function processFamilySignup(event) {
     saveFamilies();
 
     // Await cloud sync so the account is immediately active for all devices
-    await saveFamilyToFirestore(newFamily);
+    let cloudSynced = false;
+    let cloudError = null;
+    try {
+      await saveFamilyToFirestore(newFamily);
+      cloudSynced = true;
+    } catch (saveErr) {
+      console.warn("[Cloud Save Warning during signup]", saveErr);
+      cloudError = saveErr;
+    }
 
     if (loader) loader.classList.add("hidden");
 
-    // Auto-login after signup into their separate clean portal
+    // Auto-login after signup into family portal
     currentFamily = newFamily;
     initDatabase();
-    localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
-    startFirestoreSync(currentFamily.username);
+    sessionStorage.setItem("docusaver_active_family", currentFamily.username);
+    localStorage.removeItem(FAMILIES_STORAGE_KEY);
+    
+    if (cloudSynced) {
+      startFirestoreSync(currentFamily.username);
+    } else {
+      console.warn("[Cloud Sync Pending]", cloudError);
+      if (cloudError && (cloudError.code === "permission-denied" || (cloudError.message && cloudError.message.includes("permission")))) {
+        setTimeout(() => {
+          alert("⚠️ Firestore Security Rules Notice:\nYour account was created locally, but Firestore blocked the cloud write (permission-denied).\n\nTo enable live cloud sync:\n1. Go to Firebase Console > Firestore Database > Rules\n2. Change 'allow read, write: if false;' to 'allow read, write: if true;'\n3. Click Publish.");
+        }, 300);
+      }
+    }
     
     currentMember = null;
     showFamilyHome();
   } catch (err) {
     if (loader) loader.classList.add("hidden");
     console.error("[Signup Error]", err);
-    errEl.textContent = "Could not sync account to cloud. Please check connection and try again.";
+    let msg = "Could not sync account to cloud: " + (err.message || err.code || "Please check connection.");
+    if (err.code === "permission-denied" || (err.message && err.message.includes("permission"))) {
+      msg = "Cloud Database Permission Denied: Please update your Firestore Security Rules in Firebase Console to 'allow read, write: if true;'.";
+    }
+    errEl.textContent = msg;
     errEl.classList.remove("hidden");
   }
 }
@@ -701,9 +766,18 @@ async function processFamilySignup(event) {
 // Process family login (supports cross-device automatic lookup)
 async function processFamilyLogin(event) {
   event.preventDefault();
-  const username = document.getElementById("fl-username").value.trim().toLowerCase();
+  const rawInput = document.getElementById("fl-username").value.trim();
+  // Support login by username OR mobile number
+  const username = rawInput.toLowerCase().replace(/^0+/, "");
   const password = document.getElementById("fl-password").value;
   const errEl    = document.getElementById("fl-error");
+  if (!password) {
+    errEl.textContent = "Please enter your password.";
+    errEl.classList.remove("hidden");
+    const loaderEl = document.getElementById("app-loader");
+    if (loaderEl) loaderEl.classList.add("hidden");
+    return;
+  }
 
   errEl.classList.add("hidden");
 
@@ -717,7 +791,22 @@ async function processFamilyLogin(event) {
 
   try {
     // 1. Always fetch from cloud database first for cross-device authentication
-    const cloudFam = await fetchFamilyFromFirestore(username);
+    // Try by username first, then by phone if username lookup fails
+    let cloudFam = await fetchFamilyFromFirestore(username);
+    if (!cloudFam && _firestore && /^[0-9]{10,}$/.test(rawInput.replace(/\D/g,""))) {
+      try {
+        const snap = await _firestore.collection("families").get();
+        snap.forEach(doc => {
+          const d = doc.data();
+          if (d.phone && d.phone.replace(/\D/g,"").endsWith(rawInput.replace(/\D/g,"").slice(-10))) {
+            cloudFam = d;
+          }
+        });
+        if (cloudFam && cloudFam.username) {
+          cloudFam = await fetchFamilyFromFirestore(cloudFam.username) || cloudFam;
+        }
+      } catch(_) {}
+    }
 
     if (cloudFam && cloudFam.password === password) {
       if (loader) loader.classList.add("hidden");
@@ -732,7 +821,8 @@ async function processFamilyLogin(event) {
       saveFamilies();
       currentFamily = cloudFam;
       initDatabase();
-      localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
+      sessionStorage.setItem("docusaver_active_family", currentFamily.username);
+      localStorage.removeItem(FAMILIES_STORAGE_KEY);
       startFirestoreSync(currentFamily.username);
 
       showLoader("Opening Vault", "Connecting to vault...", 500, () => {
@@ -747,15 +837,16 @@ async function processFamilyLogin(event) {
     }
 
     // 2. Check local storage fallback (for offline mode)
-    let localFam = families.find(f => 
-      f.username.toLowerCase() === username && f.password === password
-    );
+    let localFam = families.find(f => {
+      const usernameMatch = f.username && f.username.toLowerCase() === username;
+      const phoneMatch = f.phone && f.phone.replace(/\D/g,"").endsWith(rawInput.replace(/\D/g,"").slice(-10));
+      return (usernameMatch || phoneMatch) && f.password === password;
+    });
 
     if (localFam) {
       if (loader) loader.classList.add("hidden");
       currentFamily = localFam;
       initDatabase();
-      localStorage.setItem(CURRENT_FAMILY_KEY, currentFamily.id);
       startFirestoreSync(currentFamily.username);
 
       showLoader("Opening Vault", "Connecting to vault...", 500, () => {
@@ -1087,25 +1178,15 @@ function openLoginModal(memberId) {
 
 function processLogin(event) {
   event.preventDefault();
-
   const id = document.getElementById("login-member-id").value;
-  const passwordInput = document.getElementById("login-password").value;
-
   const member = db.members.find(m => m.id === id);
-
-  // Member password or family passphrase
-  if (member && currentFamily && (passwordInput === currentFamily.password || (member.password && passwordInput === member.password))) {
-    // Correct login
+  if (member && currentFamily) {
+    // Members have no password — direct access
     hideModal("login-modal");
-    showLoader("Verifying Identity", "Authorizing secure locker access...", 1200, () => {
+    showLoader("Opening Vault", "Loading your secure locker...", 900, () => {
       currentMember = member;
       enterDashboard();
     });
-  } else {
-    // Failed login
-    const errorMsg = document.getElementById("login-error-msg");
-    errorMsg.textContent = "Wrong family password. Please try again.";
-    errorMsg.classList.remove("hidden");
   }
 }
 
@@ -1113,7 +1194,7 @@ function enterDashboard() {
   if (!currentMember) return;
 
   // Save session to survive refreshes
-  localStorage.setItem("docusaver_current_member_id", currentMember.id);
+  // (no localStorage used)
 
   // Update navbar/header state
   document.getElementById("header-avatar").src = getMemberAvatarUrl(currentMember);
@@ -1150,7 +1231,7 @@ function processLogout() {
   showLoader("Locking Vault", "Closing secure connections...", 800, () => {
     currentMember = null;
     // Clear active member session
-    localStorage.removeItem("docusaver_current_member_id");
+    // (no localStorage used)
     
     // Update header/nav state
     document.getElementById("header-user").classList.add("hidden");
@@ -1174,8 +1255,6 @@ function processRegistration(event) {
   const name = document.getElementById("reg-name").value.trim();
   const age = parseInt(document.getElementById("reg-age").value);
   const username = document.getElementById("reg-username").value.trim().toLowerCase();
-  const password = document.getElementById("reg-password").value;
-
   const errorMsg = document.getElementById("reg-error-msg");
   errorMsg.classList.add("hidden");
 
@@ -1197,7 +1276,6 @@ function processRegistration(event) {
     name,
     age,
     username,
-    password,
     avatar: finalAvatar
   };
 
@@ -1986,8 +2064,6 @@ async function handleCreateNewSync() {
       await pushCloudDatabase(bucketId, passphrase);
       
       // Save details locally
-      localStorage.setItem("docusaver_sync_id", bucketId);
-      localStorage.setItem("docusaver_sync_passphrase", passphrase);
       
       // Reset inputs & render
       passphraseInput.value = "";
@@ -2022,8 +2098,6 @@ async function handleJoinExistingSync() {
       const cloudDb = await fetchCloudDatabase(syncId, passphrase);
       
       // Save credentials and database locally
-      localStorage.setItem("docusaver_sync_id", syncId);
-      localStorage.setItem("docusaver_sync_passphrase", passphrase);
       db = cloudDb;
       saveDatabase(); // saves local copy
 
@@ -2065,13 +2139,207 @@ function hideModal(modalId) {
   document.getElementById(modalId).classList.add("hidden");
 }
 
+
+// ============================================================
+// OTP LOGIN (Real SMS via Firebase Phone Auth + Live Cloud DB)
+// ============================================================
+let _pendingOtpPhone = null;
+let _pendingOtpFamily = null;
+let _pendingOtp = null;
+let _otpExpireTimer = null;
+
+// (generateOtp removed — real SMS only)
+
+async function sendOtpForLogin() {
+  const phoneInput = document.getElementById("fl-otp-phone");
+  const errorEl = document.getElementById("fl-otp-error");
+  const bannerText = document.getElementById("fl-otp-banner-text");
+  const otpSection = document.getElementById("fl-otp-input-section");
+  const sendBtn = document.getElementById("fl-send-otp-btn");
+
+  errorEl.classList.add("hidden");
+
+  const phone = phoneInput ? phoneInput.value.trim().replace(/\D/g, "") : "";
+  const cleanPhone = phone.slice(-10);
+
+  if (cleanPhone.length < 10) {
+    errorEl.textContent = "Please enter a valid 10-digit mobile number.";
+    errorEl.classList.remove("hidden");
+    if (otpSection) otpSection.classList.add("hidden");
+    return;
+  }
+
+  // 1. Check if ID / account exists in Live Firestore
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Checking..."; }
+  const loader = document.getElementById("app-loader");
+  if (loader) {
+    document.getElementById("loader-title").textContent = "Checking Account";
+    document.getElementById("loader-status").textContent = "Verifying mobile number with live cloud database...";
+    loader.classList.remove("hidden");
+  }
+
+  let matchedFamily = null;
+  try {
+    if (_firestore) {
+      const snap = await _firestore.collection("families").get();
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.phone && d.phone.replace(/\D/g, "").endsWith(cleanPhone)) {
+          matchedFamily = d;
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("[Firestore phone check]", err);
+  }
+
+  if (loader) loader.classList.add("hidden");
+  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "Get OTP"; }
+
+  if (!matchedFamily) {
+    // "if id created otherwise show no account"
+    errorEl.textContent = "No account found with this mobile number. Please create an account first.";
+    errorEl.classList.remove("hidden");
+    if (otpSection) otpSection.classList.add("hidden");
+    return;
+  }
+
+  _pendingOtpPhone = cleanPhone;
+  _pendingOtpFamily = matchedFamily;
+
+  // 2. Show OTP field immediately so user can type when SMS arrives
+  if (otpSection) {
+    otpSection.classList.remove("hidden");
+    otpSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  if (bannerText) bannerText.textContent = "📲 Sending SMS to +91 " + cleanPhone + "... Enter code when it arrives.";
+  const otpInputEl = document.getElementById("fl-otp-code");
+  if (otpInputEl) { otpInputEl.value = ""; otpInputEl.focus(); }
+
+  // 3. Account exists! Send OTP via Fast2SMS (free live SMS)
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "Sending SMS..."; }
+  try {
+    const resp = await fetch("/api/send-otp", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ phone: cleanPhone })
+    });
+    const result = await resp.json();
+
+    if (result.success) {
+      window._fast2smsPhone = cleanPhone;
+      if (bannerText) bannerText.textContent = "✅ OTP sent to +91 " + cleanPhone + ". Enter the 6-digit code:";
+      console.log("[SMS ✓] OTP dispatched via Fast2SMS to +91" + cleanPhone);
+    } else {
+      errorEl.textContent = "❌ " + (result.error || "Could not send OTP. Try again.");
+      errorEl.classList.remove("hidden");
+    }
+  } catch (smsErr) {
+    console.warn("[SMS Error]", smsErr);
+    errorEl.textContent = "❌ Could not reach SMS service. Check internet connection.";
+    errorEl.classList.remove("hidden");
+  } finally {
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = "Get OTP"; }
+  }
+}
+
+async function verifyOtpForLogin(event) {
+  event.preventDefault();
+  const errorEl = document.getElementById("fl-otp-error");
+  const otpInput = document.getElementById("fl-otp-code");
+  const enteredOtp = otpInput ? otpInput.value.trim() : "";
+  errorEl.classList.add("hidden");
+
+  if (!enteredOtp) {
+    errorEl.textContent = "Please enter the 6-digit code received on your phone.";
+    errorEl.classList.remove("hidden");
+    return;
+  }
+
+  showLoader("Verifying OTP", "Authenticating secure SMS code...", 0);
+
+  try {
+    // 1. Verify OTP via Fast2SMS serverless function
+    const phone = window._fast2smsPhone || (_pendingOtpPhone || "");
+    if (!phone) {
+      throw new Error("No OTP was sent. Please click 'Get OTP' first.");
+    }
+
+    const resp = await fetch("/api/verify-otp", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ phone, otp: enteredOtp })
+    });
+    const result = await resp.json();
+
+    if (!result.success) {
+      const loader2 = document.getElementById("app-loader");
+      if (loader2) loader2.classList.add("hidden");
+      errorEl.textContent = "❌ " + (result.error || "Invalid OTP. Please try again.");
+      errorEl.classList.remove("hidden");
+      return;
+    }
+    console.log("[OTP ✓] Verified via Fast2SMS serverless function");
+
+    // 2. Fetch full family data LIVE from Firestore
+    let foundFamily = _pendingOtpFamily;
+    if (_firestore && foundFamily && foundFamily.username) {
+      foundFamily = await fetchFamilyFromFirestore(foundFamily.username) || foundFamily;
+    }
+
+    const loader = document.getElementById("app-loader");
+    if (loader) loader.classList.add("hidden");
+
+    if (!foundFamily) {
+      errorEl.textContent = "Account error. Could not retrieve family data.";
+      errorEl.classList.remove("hidden");
+      return;
+    }
+
+    currentFamily = foundFamily;
+    db = { members: foundFamily.members || [], documents: foundFamily.documents || [] };
+    sessionStorage.setItem("docusaver_active_family", currentFamily.username);
+    startFirestoreSync(currentFamily.username);
+    _pendingOtp = null;
+    _pendingOtpPhone = null;
+    window.confirmationResult = null;
+
+    showLoader("Opening Vault", "Connecting to live cloud vault...", 600, () => {
+      if (db.members && db.members.length === 1) {
+        currentMember = db.members[0];
+        enterDashboard();
+      } else {
+        showFamilyHome();
+      }
+    });
+  } catch (err) {
+    const loader = document.getElementById("app-loader");
+    if (loader) loader.classList.add("hidden");
+    console.error("[OTP Verification Error]", err);
+    errorEl.textContent = err.code === "auth/invalid-verification-code"
+      ? "Incorrect SMS code. Please check your phone message and try again."
+      : (err.message || "OTP verification failed.");
+    errorEl.classList.remove("hidden");
+  }
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
+  // ── 100% LIVE CLOUD ENGINE: CLEAR ALL LOCAL STORAGE ─────────────────────
+  try {
+    localStorage.clear();
+  } catch (_) {}
+  families = [];
+  currentFamily = null;
+  currentMember = null;
+  db = { members: [], documents: [] };
+
   // 0. Bootstrap Firebase (seed defaults if needed, then connect with retry loop)
   if (!getFirebaseConfig()) {
     saveFirebaseConfig(DEFAULT_FIREBASE_CONFIG);
   }
   if (!getImgbbKey()) {
-    localStorage.setItem(IMGBB_KEY_STORAGE, DEFAULT_IMGBB_KEY);
+    // (no localStorage used)
   }
   
   let fbRetryCount = 0;
@@ -2084,38 +2352,74 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   ensureFirebaseConnected();
 
-  // 1. Load Families
-  loadFamilies();
+  // Clear all persistent session keys so NO account ever opens automatically
+  localStorage.removeItem(FAMILIES_STORAGE_KEY);
+  localStorage.removeItem(CURRENT_FAMILY_KEY);
+  localStorage.removeItem(CURRENT_MEMBER_KEY);
+  sessionStorage.removeItem("docusaver_active_family");
+  sessionStorage.removeItem("docusaver_active_member");
+  families = [];
+  currentFamily = null;
+  currentMember = null;
+  db = { members: [], documents: [] };
 
-  // 2. Restore Family & Member Session if active
-  const savedFamilyId = localStorage.getItem(CURRENT_FAMILY_KEY);
-  if (savedFamilyId) {
-    const fam = families.find(f => f.id === savedFamilyId);
-    if (fam) {
-      currentFamily = fam;
-      initDatabase();
-      showFamilyHome();
-
-      // Start real-time Firestore sync for multi-device instant synchronization
-      startFirestoreSync(fam.username);
-
-      const savedMemberId = localStorage.getItem(CURRENT_MEMBER_KEY);
-      if (savedMemberId) {
-        const member = db.members.find(m => m.id === savedMemberId);
-        if (member) {
-          currentMember = member;
-          enterDashboard();
-        }
-      }
-    } else {
-      showLanding();
-    }
-  } else {
-    showLanding();
-  }
+  // Always show the landing login screen on page open / refresh — require explicit authentication!
+  showLanding();
 
   // 2b. Landing Page Event Listeners
   document.getElementById("family-login-form").addEventListener("submit", processFamilyLogin);
+
+  // === OTP Login tab switching ===
+  const tabLoginOtpBtn = document.getElementById("tab-login-otp-btn");
+  const tabLoginPassBtn = document.getElementById("tab-login-pass-btn");
+  const otpLoginForm = document.getElementById("family-login-otp-form");
+  const passLoginForm = document.getElementById("family-login-form");
+
+  if (tabLoginOtpBtn && tabLoginPassBtn) {
+    tabLoginOtpBtn.addEventListener("click", () => {
+      tabLoginOtpBtn.style.background = "var(--white)";
+      tabLoginOtpBtn.style.color = "var(--primary-color)";
+      tabLoginOtpBtn.style.boxShadow = "var(--shadow-sm)";
+      tabLoginPassBtn.style.background = "transparent";
+      tabLoginPassBtn.style.color = "var(--text-muted)";
+      tabLoginPassBtn.style.boxShadow = "none";
+      if (otpLoginForm) otpLoginForm.classList.remove("hidden");
+      if (passLoginForm) passLoginForm.classList.add("hidden");
+    });
+    tabLoginPassBtn.addEventListener("click", () => {
+      tabLoginPassBtn.style.background = "var(--white)";
+      tabLoginPassBtn.style.color = "var(--primary-color)";
+      tabLoginPassBtn.style.boxShadow = "var(--shadow-sm)";
+      tabLoginOtpBtn.style.background = "transparent";
+      tabLoginOtpBtn.style.color = "var(--text-muted)";
+      tabLoginOtpBtn.style.boxShadow = "none";
+      if (passLoginForm) passLoginForm.classList.remove("hidden");
+      if (otpLoginForm) otpLoginForm.classList.add("hidden");
+    });
+  }
+
+  // === OTP send + verify ===
+  const sendOtpBtn = document.getElementById("fl-send-otp-btn");
+  if (sendOtpBtn) sendOtpBtn.addEventListener("click", sendOtpForLogin);
+  const resendOtpBtn = document.getElementById("fl-resend-otp-btn");
+  if (resendOtpBtn) resendOtpBtn.addEventListener("click", sendOtpForLogin);
+  if (otpLoginForm) otpLoginForm.addEventListener("submit", verifyOtpForLogin);
+
+  // Enter key on OTP phone input triggers OTP send
+  const otpPhoneInput = document.getElementById("fl-otp-phone");
+  if (otpPhoneInput) {
+    otpPhoneInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendOtpForLogin();
+      }
+    });
+  }
+
+
+
+
+
   document.getElementById("family-signup-form").addEventListener("submit", processFamilySignup);
   const famLogoutBtn = document.getElementById("family-logout-btn");
   if (famLogoutBtn) famLogoutBtn.addEventListener("click", processFamilyLogout);
@@ -2219,23 +2523,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("landing-login-panel").classList.remove("hidden");
     document.getElementById("fl-error").classList.add("hidden");
   });
-
-  // Accounts Directory Modal bindings
-  const openAccountsBtn = document.getElementById("open-accounts-dir-btn");
-  if (openAccountsBtn) {
-    openAccountsBtn.addEventListener("click", () => {
-      showModal("accounts-dir-modal");
-      renderAccountsDirectory();
-    });
-  }
-
-  const refreshAccountsBtn = document.getElementById("refresh-accounts-dir-btn");
-  if (refreshAccountsBtn) {
-    refreshAccountsBtn.addEventListener("click", () => {
-      renderAccountsDirectory();
-    });
-  }
-
 
   // 2c. Fetch cloud database if sync is active
   const syncId = localStorage.getItem("docusaver_sync_id");
@@ -3234,8 +3521,8 @@ let _firestore   = null;
 function getFirebaseConfig() {
   try {
     const raw = localStorage.getItem(FIREBASE_CONFIG_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    return raw ? JSON.parse(raw) : DEFAULT_FIREBASE_CONFIG;
+  } catch { return DEFAULT_FIREBASE_CONFIG; }
 }
 
 function saveFirebaseConfig(cfg) {
@@ -3332,23 +3619,22 @@ async function pushDbToFirestore() {
   const membersForCloud = JSON.parse(JSON.stringify(db.members));
   const docsForCloud    = JSON.parse(JSON.stringify(db.documents));
 
-  // Upload any base64 images that haven't been uploaded yet
+  // Upload any base64 images that haven't been uploaded yet to Cloudinary or ImgBB
   for (const doc of docsForCloud) {
     if (doc.image && doc.image.startsWith("data:")) {
-      if (apiKey) {
-        try {
-          const url = await uploadImageToImgbb(doc.image);
-          // Persist the hosted URL back into the real in-memory db too
+      try {
+        const url = await uploadImageToHosting(doc.image);
+        if (url) {
           const realDoc = db.documents.find(d => d.id === doc.id);
           if (realDoc) realDoc.image = url;
           doc.image = url;
-          console.log("[ImgBB] Uploaded doc image:", doc.id);
-        } catch (uploadErr) {
-          console.warn("[ImgBB] Could not upload image for doc", doc.id, uploadErr.message);
+          console.log("[Cloud Image] Uploaded doc image:", doc.id);
+        } else {
           doc.image = ""; // strip to avoid Firestore 1MB limit
         }
-      } else {
-        doc.image = ""; // no key — strip large blob
+      } catch (uploadErr) {
+        console.warn("[Cloud Image] Could not upload image for doc", doc.id, uploadErr.message);
+        doc.image = ""; // strip to avoid Firestore 1MB limit
       }
     }
   }
@@ -3423,7 +3709,6 @@ async function handleFirebaseSettingsSave(event) {
   statusEl.classList.remove("hidden");
 
   saveFirebaseConfig(cfg);
-  if (imgbbKey) localStorage.setItem(IMGBB_KEY_STORAGE, imgbbKey);
 
   const ok = initFirebase();
   if (!ok) {

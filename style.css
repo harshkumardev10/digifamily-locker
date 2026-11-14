@@ -2904,3 +2904,36 @@ footer.app-footer {
 
 
 
+
+/* ==========================================================================
+   CUSTOM SMOOTH SCROLLBAR
+   ========================================================================== */
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #b0c4de #f0f4fa;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f4fa;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b0c4de;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1e62a6;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b0c4de #f0f4fa;
+}
